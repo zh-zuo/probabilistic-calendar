@@ -16,3 +16,7 @@ The page opens on a demo week. Click any event to edit it, add your own, or star
 - **Bets**: bet on your own week, settle bets afterwards, and compare your Brier score with the model's.
 
 Single static `index.html`, no build step.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
