@@ -29,12 +29,12 @@ The [live app](https://zh-zuo.github.io/probabilistic-calendar/) opens on a demo
 - **Learning**: each event fits its arrival time and duration from your logs, starting from your plan and moving toward your real timing as logs accumulate ("you planned 18:30 ± 15; you arrive 18:44 ± 15").
 - **Arrival shapes**: for each event, pick Gaussian (as likely early as late), Skewed (usually near the typical time, with a long tail toward early or late, set by a slider), Uniform (any time in a window), Exact, or After another event (with a skewable gap). The editor previews the shape as you change it.
 - **Distributions**: arrivals as above; durations right-skewed (meetings run long), symmetric, or fixed. Each event is a cloud of dots whose density is the chance you're there (2,500 simulated weeks).
-- **Chained events**: "Dinner starts 20 ± 10 min after Climbing ends", so lateness propagates. The day-ends strip shows the chance each day is done by your bedtime.
+- **Chained events**: "Dinner starts 20 ± 10 min after Climbing ends", so lateness propagates. If the first event does not happen, the chained one either happens at its own time or is skipped too (your choice). The day-ends strip shows the chance each day is done by your bedtime.
 - **Timing planner**: slide your plan earlier or later and see the chance you arrive or finish by a deadline; or ask "to be 90% sure, when do I start?"
 - **Bets**: bet on your own week. Bets settle themselves when you log the event, and the page keeps a Brier score for you and for the model.
 - **Schrödinger blocks**: events with less than 100% chance of happening are free and busy at once until you click to open the box.
 - **Invites**: copy a link that carries your arrival distribution; whoever opens it gets the event plus meet-up odds.
-- **Conditions**: Rain, Monday blues, Deadline week, Double espresso, Friday feeling warp the distributions.
+- **Conditions**: Rain, Monday blues, Deadline week, Double espresso, Friday feeling warp the distributions. **Shared lateness** adds one random offset per day to every event, so bad days make everything late together.
 - **Observe / Play 100 universes**: sample concrete weeks and tally what collided.
 - **Import and export**: import an `.ics` file from Google Calendar, Apple Calendar or Outlook; export the next 4 weeks as `.ics` with each event blocked from its median start to its 90% finish time.
 
@@ -73,6 +73,18 @@ No server or GitHub needed:
 Logs and bets are saved in the browser that made them. Fonts load from Google Fonts when online and fall back to system fonts offline.
 
 Single static `index.html`, no build step.
+
+## The model, and how it is tested
+
+[MODEL.md](MODEL.md) specifies exactly what is simulated and learned, and which parts are heuristics (the learning is a shrinkage estimator, not a full Bayesian model; calibration is not yet validated).
+
+The model is tested by running the app's own script under Node, with no dependencies:
+
+```sh
+node --test 'tests/*.test.js'
+```
+
+The tests run on every push (GitHub Actions).
 
 ## License
 

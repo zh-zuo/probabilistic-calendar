@@ -328,11 +328,12 @@ const CONDS=[
   {id:'friday',label:'Friday feeling',desc:'Fridays: arrivals +5 min, things wrap up 15% faster',days:[4],shift:5,noise:1,dur:0.85,spread:1},
 ];
 let conds=new Set(ls.get(K.cond)||[]);
+let dayLate=+(ls.get('probcal-daylate')||0); /* σ of a lateness shared by every event on the same day, in minutes */
 function condFor(dw){const c={shift:0,noise:1,dur:1,spread:1};for(const k of CONDS)if(conds.has(k.id)&&(!k.days||k.days.includes(dw))){c.shift+=k.shift;c.noise*=k.noise;c.dur*=k.dur;c.spread*=k.spread}return c}
 
 /* ---------- data ---------- */
 function norm(e){
-  e.start=Object.assign({type:'normal',mu:600,sigma:10,lo:600,hi:660,skew:0.6,after:null,gap:15,gapSigma:10,gapSkew:0},e.start||{});
+  e.start=Object.assign({type:'normal',mu:600,sigma:10,lo:600,hi:660,skew:0.6,after:null,gap:15,gapSigma:10,gapSkew:0,ifMissing:'own'},e.start||{});
   e.dur=Object.assign({type:'lognormal',median:60,spread:0.25,sd:10},e.dur||{});
   if(e.exists==null)e.exists=1;if(e.friend===undefined)e.friend=null;e.days=e.days||[];if(e.color==null)e.color=0;
   if(e.date===undefined)e.date=null;e.skip=e.skip||[];if(e.private==null)e.private=false;if(e.learn==null)e.learn=true;return e}
@@ -411,21 +412,22 @@ function runDay(key,r,n){
   const{order,parentOf}=dayOrder(key),c=condFor(dowOf(key)),res={},isToday=key===todayKey(),nowM=nowMinutes();
   const E={};for(const e of order)E[e.id]=eff(e);
   for(const e of order)res[e.id]={S:new Float64Array(n),E:new Float64Array(n),H:new Uint8Array(n),FS:e.friend?new Float64Array(n):null,FE:e.friend?new Float64Array(n):null};
-  for(let i=0;i<n;i++)for(const e of order){
+  for(let i=0;i<n;i++){const delta=dayLate>0?dayLate*gauss(r):0;for(const e of order){
     const R=res[e.id],x=E[e.id],lg=logs[e.id+'|'+key],box=boxState[e.id+'|'+key],u=r();
     const logged=lg&&(lg.a!=null||lg.d!=null);
-    const h=logged?true:box!==undefined?box:(e.exists>=1||u<e.exists);
+    let h=logged?true:box!==undefined?box:(e.exists>=1||u<e.exists);
     const p=parentOf(e);let s;
+    if(!logged&&e.start.type==='after'&&e.start.ifMissing==='skip'&&!(p&&res[p].H[i]))h=false;
     if(p&&res[p].H[i])s=res[p].E[i]+Math.max(0,x.start.gap+x.start.gapSigma*c.noise*skewNoise(x.start.gapSkew,r));
-    else if(x.start.type==='after')s=sOwn({type:'normal',mu:x.start.mu,sigma:x.start.sigma},r,c);
-    else s=sOwn(x.start,r,c);
+    else if(x.start.type==='after')s=sOwn({type:'normal',mu:x.start.mu,sigma:x.start.sigma},r,c)+delta;
+    else s=sOwn(x.start,r,c)+(x.start.type==='fixed'?0:delta);
     if(lg&&lg.a!=null)s=lg.a;
     let du=sDur(x.dur,r,c);
     if(lg&&lg.d!=null){if(lg.a==null)s=Math.min(s,lg.d-1);du=lg.d-s}
     else if(lg&&lg.a!=null&&isToday&&nowM>s){let t=0;while(s+du<nowM&&t<30){du=sDur(x.dur,r,c);t++}if(s+du<nowM)du=nowM-s+1}
     R.S[i]=s;R.E[i]=s+du;R.H[i]=h?1:0;
     if(e.friend){const f=e.friend,fs=f.mu+f.sigma*gauss(r);R.FS[i]=fs;R.FE[i]=fs+f.median*Math.exp(f.spread*gauss(r))}
-  }
+  }}
   return{order,res};
 }
 function occOf(S,E,H){
@@ -453,7 +455,11 @@ function simDay(key,n){
     for(let i=0;i<n;i++)if(R.H[i]&&R.E[i]>last[i])last[i]=R.E[i]}
   day.last=last;return day;
 }
-function simulateAll(){learnAll();sims=cols.map(k=>simDay(k,N));computeLayout();computeConflicts()}
+/* an "after" link must point at another existing event and must not form a loop; broken links fall back to the event's own time */
+function repairLinks(){const fixed=[];for(const e of events){if(e.start.type!=='after')continue;const p=byId(e.start.after);
+  if(!p||p===e||dependsOn(p,e)){e.start.type='normal';fixed.push(e.name)}}
+  if(fixed.length){try{$('#io-msg').textContent=`Removed a circular or missing "after" link from: ${fixed.join(', ')}. Those events now use their own time.`}catch(err){}}return fixed}
+function simulateAll(){repairLinks();learnAll();sims=cols.map(k=>simDay(k,N));computeLayout();computeConflicts()}
 function computeLayout(){
   layout=sims.map(day=>{
     const evs=day.order.map(e=>{const st=day.st[e.id],lg=logs[e.id+'|'+day.key];let lo=st.lo,hi=st.hi;if(lg&&lg.a!=null){lo=Math.min(lo,lg.a);hi=Math.max(hi,lg.d??lg.a+10)}return{ev:e,lo,hi,lane:0,lanes:1}}).sort((a,b)=>a.lo-b.lo);
@@ -645,7 +651,9 @@ $('#log-next').addEventListener('click',()=>{logDate=addDays(logDate,1);if(!cols
 function renderConds(){
   const active=CONDS.filter(c=>conds.has(c.id));
   $('#conds').innerHTML=`<span class="lbl">Conditions</span>`+CONDS.map(c=>`<button class="chip" data-cond="${c.id}" aria-pressed="${conds.has(c.id)}" title="${esc(c.desc)}">${c.label}</button>`).join('')+
+    `<label class="chip" style="display:inline-flex;gap:6px;align-items:center" title="Bad days make everything late together. This adds one random offset per day, shared by all events that day.">Shared lateness<select id="daylate" style="font:inherit;font-size:12px;border:none;background:transparent;color:inherit">${[0,5,10,15,20].map(v=>`<option value="${v}"${v===dayLate?' selected':''}>${v?'± '+v+' min':'off'}</option>`).join('')}</select></label>`+
     `<span class="cond-note">${active.length?active.map(c=>`<b>${c.label}</b>: ${esc(c.desc)}`).join(' · '):'Toggle a condition to see how it warps the week.'}</span>`}
+$('#conds').addEventListener('change',e=>{if(e.target.id!=='daylate')return;dayLate=+e.target.value;ls.set('probcal-daylate',dayLate);refreshAll()});
 $('#conds').addEventListener('click',e=>{const b=e.target.closest('[data-cond]');if(!b)return;const id=b.dataset.cond;conds.has(id)?conds.delete(id):conds.add(id);ls.set(K.cond,[...conds]);renderConds();refreshAll()});
 
 function renderDayEnds(){
@@ -712,7 +720,8 @@ function editorHTML(ev){
    :s.type==='after'?`<label class="field">After<select id="ed-after">${parents.map(x=>opt(x.id,esc(x.name),s.after)).join('')}</select></label>
      <div class="pair"><label class="field">Gap (min)<input type="number" id="ed-gap" min="0" max="240" value="${s.gap}"></label><label class="field">Gap spread (min)<input type="number" id="ed-gaps" min="0" max="120" value="${s.gapSigma}"></label></div>
      <label class="field"><span>Gap skew <b class="num" id="ed-gskew-v">${skewWord(s.gapSkew)}</b></span><span class="range-row"><span>short</span><input type="range" id="ed-gskew" min="-1" max="1" step="0.05" value="${s.gapSkew}"><span>long</span></span></label>
-     <div class="pair"><label class="field">Days without it: at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">± (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
+     <label class="field">If ${esc((byId(s.after)||{}).name||'it')} doesn't happen<select id="ed-ifmiss">${opt('own','Happen anyway, at the time below',s.ifMissing)}${opt('skip','Skip this too',s.ifMissing)}</select></label>
+     <div class="pair"><label class="field">Otherwise at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">± (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
    :`<label class="field">At<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label>`}
   <div class="prev"><canvas id="ed-prev" aria-label="Preview of the arrival distribution"></canvas><span class="hint" id="ed-prev-cap"></span></div>
   <label class="field">How long it takes<select id="ed-dtype">${opt('lognormal','Usually runs long (skewed)',d.type)}${opt('normal','Could go either way',d.type)}${opt('fixed','Exactly as planned',d.type)}</select></label>
@@ -758,7 +767,7 @@ function readEditor(ev){
   const s=ev.start,d=ev.dur;
   s.mu=tim('ed-mu',s.mu);s.sigma=Math.max(0,num('ed-sigma',s.sigma));s.lo=tim('ed-lo',s.lo);s.hi=tim('ed-hi',s.hi);
   s.skew=Math.max(-1,Math.min(1,num('ed-skew',s.skew)));s.gapSkew=Math.max(-1,Math.min(1,num('ed-gskew',s.gapSkew)));
-  if(byEl('ed-after'))s.after=byEl('ed-after').value;s.gap=Math.max(0,num('ed-gap',s.gap));s.gapSigma=Math.max(0,num('ed-gaps',s.gapSigma));
+  if(byEl('ed-after'))s.after=byEl('ed-after').value;if(byEl('ed-ifmiss'))s.ifMissing=byEl('ed-ifmiss').value;s.gap=Math.max(0,num('ed-gap',s.gap));s.gapSigma=Math.max(0,num('ed-gaps',s.gapSigma));
   d.median=Math.max(1,num('ed-med',d.median));d.spread=Math.max(0,num('ed-spread',d.spread));d.sd=Math.max(0,num('ed-sd',d.sd));
   ev.exists=Math.min(1,Math.max(0.05,num('ed-exists',ev.exists)));
   if(byEl('ed-learn'))ev.learn=byEl('ed-learn').checked;if(byEl('ed-priv'))ev.private=byEl('ed-priv').checked;
@@ -966,12 +975,12 @@ $('#dl-app').addEventListener('click',async()=>{
 $('#dl-json').addEventListener('click',()=>download('calendar.json',calendarJSON(),'application/json'));
 $('#cp-json').addEventListener('click',()=>{const t=calendarJSON(),fb=()=>showOutput('calendar.json',t,'Copy the JSON from the box below.');
   try{navigator.clipboard.writeText(t).then(()=>{$('#io-msg').textContent='calendar.json copied. Paste it into calendar.json in your repo and commit.';$('#io-text').hidden=true},fb)}catch(e){fb()}});
-$('#bk-out').addEventListener('click',()=>download(`probabilistic-calendar-backup-${todayKey()}.json`,JSON.stringify({version:3,kind:'backup',saved:new Date().toISOString(),events,logs,bets,conds:[...conds],bed},null,1),'application/json'));
+$('#bk-out').addEventListener('click',()=>download(`probabilistic-calendar-backup-${todayKey()}.json`,JSON.stringify({version:3,kind:'backup',saved:new Date().toISOString(),events,logs,bets,conds:[...conds],bed,dayLate},null,1),'application/json'));
 function readFile(input,cb){const f=input.files&&input.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{cb(String(r.result),f.name);input.value=''};r.readAsText(f)}
 $('#bk-in').addEventListener('change',e=>readFile(e.target,(text,name)=>{let j;try{j=JSON.parse(text)}catch(err){$('#io-msg').textContent=`${name} is not valid JSON.`;return}
   if(!j||!Array.isArray(j.events)){$('#io-msg').textContent=`${name} has no "events" list, so it is not a backup or calendar.json.`;return}
   events=j.events.map(norm);if(j.logs&&typeof j.logs==='object'){logs=j.logs;saveLogs()}if(Array.isArray(j.bets)){bets=j.bets;ls.set(K.bets,bets)}
-  if(Array.isArray(j.conds)){conds=new Set(j.conds);ls.set(K.cond,j.conds);renderConds()}if(j.bed){bed=j.bed;$('#bed').value=bed;ls.set(K.bed,bed)}
+  if(Array.isArray(j.conds)){conds=new Set(j.conds);ls.set(K.cond,j.conds);renderConds()}if(j.bed){bed=j.bed;$('#bed').value=bed;ls.set(K.bed,bed)}if(j.dayLate!=null){dayLate=+j.dayLate||0;ls.set('probcal-daylate',dayLate);renderConds()}
   openId=null;boxState={};afterStructural();$('#io-msg').textContent=`Restored ${events.length} events${j.logs?` and ${Object.keys(logs).length} logged occurrences`:''} from ${name}.`;$('#io-text').hidden=true}));
 
 function parseICS(text){
