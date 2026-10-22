@@ -74,6 +74,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,la
 .dayends b{font-family:var(--f-mono);font-weight:500;font-size:13px}
 .dayends small{color:var(--muted)}
 .dayends .ok{color:var(--good)} .dayends .bad{color:var(--warn)}
+.dragbox{position:absolute;z-index:4;border:2px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 14%,transparent);pointer-events:none;box-sizing:border-box;padding:3px 6px;font-family:var(--f-mono);font-size:11px;font-weight:500;color:var(--accent);overflow:hidden}
 .hair{position:absolute;height:1px;background:var(--ink);opacity:.55;pointer-events:none}
 .tip{position:absolute;z-index:5;min-width:200px;max-width:260px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;box-shadow:0 6px 24px rgba(0,0,0,.14);pointer-events:none;font-size:13px;display:grid;gap:5px}
 .tip h4{margin:0;font-family:var(--f-mono);font-weight:500;font-size:12px;color:var(--muted);letter-spacing:.04em}
@@ -194,6 +195,7 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
       <div class="cal-scroll"><div class="cal" id="cal">
         <canvas id="cv" aria-label="Week view showing each event as a probability cloud, and logged events as solid blocks"></canvas>
         <div class="hair" id="hair" hidden></div>
+        <div class="dragbox" id="dragbox" hidden></div>
         <div class="tip" id="tip" hidden></div>
         <div class="dayends" id="dayends"></div>
       </div></div>
@@ -203,7 +205,7 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
         <span><i class="key-hatch"></i>Schrödinger block (click to open)</span>
         <span><i class="key-friend"></i>friend's presence</span>
         <span><i class="key-now"></i>now</span>
-        <span>Click an event to edit it · double-click an empty spot to add one</span>
+        <span>Click an event to edit it · drag on the calendar to add one</span>
         <span><label for="bed">Done for the day by</label><input type="time" id="bed" value="22:00"></span>
       </div>
     </section>
@@ -562,7 +564,7 @@ function query(e){
   if(!observed)rows.sort((a,b)=>b.pr-a.pr);
   const under=hitAt(L);cv.style.cursor=under?'pointer':'default';
   if(under&&isBox(under)&&boxState[under.ev.id+'|'+key]===undefined)boxLine=`${esc(under.ev.name)} is free and busy at once. Click to open the box; double-click to edit.`;
-  else if(!boxLine||!(under&&isBox(under)))boxLine=under?`Click to edit ${esc(under.ev.name)}.`:'Double-click to add an event here.';
+  else if(!boxLine||!(under&&isBox(under)))boxLine=under?`Click to edit ${esc(under.ev.name)}. Drag to add an event.`:'Drag down to add an event here.';
   tip.innerHTML=`<h4>${shortDay(key).toUpperCase()} · ${fmt(t)}</h4>`+rows.map(r=>`<div class="row"><i class="sw" style="background:${r.friend?k.ink:k.c[r.ev.color%8]};${r.friend?'width:4px':''}"></i><span>${r.friend?'Friend at '+esc(r.ev.name):esc(r.ev.name)}</span><span class="num">${r.txt}</span></div>`).join('')+
     (observed?(rows.length?'':`<div class="free"><span>Free in this universe</span></div>`):`<div class="free"><span>Free</span><span class="num">${pct(free)}</span></div>`)+(boxLine?`<div class="box">${boxLine}</div>`:'');
   tip.hidden=hair.hidden=false;
@@ -570,12 +572,31 @@ function query(e){
   const tw=tip.offsetWidth,th=tip.offsetHeight;let tx=x+14,ty=y+14;
   if(tx+tw>geo.W-4)tx=x-tw-14;if(ty+th>geo.H-4)ty=y-th-14;tip.style.left=Math.max(4,tx)+'px';tip.style.top=Math.max(4,ty)+'px';
 }
-cv.addEventListener('pointermove',query);cv.addEventListener('pointerdown',query);
-cv.addEventListener('pointerleave',()=>{tip.hidden=hair.hidden=true});
+/* drag on the grid to create an event (mouse and pen; touch keeps vertical scrolling) */
+let drag=null,justDragged=false;const dragbox=$('#dragbox'),SNAP=15;
+function dragRange(){const a=Math.min(drag.t0,drag.t1),b=Math.max(drag.t0,drag.t1);let s0=Math.floor(a/SNAP)*SNAP,e0=Math.ceil(b/SNAP)*SNAP;if(e0-s0<SNAP)e0=s0+SNAP;return[Math.max(T0,s0),Math.min(T1,e0)]}
+cv.addEventListener('pointerdown',e=>{query(e);if(e.pointerType==='touch'||e.button!==0)return;const L=locate(e);if(!L||L.header)return;
+  drag={ci:L.ci,t0:L.t,t1:L.t,y0:L.y,moved:false,id:e.pointerId};try{cv.setPointerCapture(e.pointerId)}catch(err){}});
+cv.addEventListener('pointermove',e=>{
+  if(!drag){query(e);return}
+  const rect=cv.getBoundingClientRect(),y=Math.max(HEAD,Math.min(yOf(T1),e.clientY-rect.top));drag.t1=T0+(y-HEAD)/PPM;
+  if(!drag.moved&&Math.abs(y-drag.y0)<6)return;
+  if(!drag.moved){drag.moved=true;tip.hidden=hair.hidden=true;cv.style.cursor='ns-resize'}
+  const[a,b]=dragRange();Object.assign(dragbox.style,{left:(GUT+drag.ci*geo.cw+3)+'px',width:(geo.cw-6)+'px',top:yOf(a)+'px',height:Math.max(12,yOf(b)-yOf(a))+'px'});
+  dragbox.textContent=`${fmt(a)}–${fmt(b)}`;dragbox.hidden=false});
+function endDrag(e,cancel){if(!drag)return;const d=drag;drag=null;dragbox.hidden=true;try{cv.releasePointerCapture(d.id)}catch(err){}
+  if(!d.moved||cancel)return;justDragged=true;setTimeout(()=>{justDragged=false},0);cv.style.cursor='default';
+  drag=d;const[a,b]=dragRange();drag=null;const key=cols[d.ci];
+  const used=new Set(events.map(x=>x.color)),color=[0,1,2,3,4,5,6,7].find(c=>!used.has(c))??events.length%8;
+  const ev=mk('e'+Date.now().toString(36),'New event',color,[dowOf(key)],{mu:a,sigma:10},{median:b-a,spread:0.25},{date:key});
+  events.push(ev);openId=ev.id;afterStructural();const n=$('#ed-name');if(n){n.focus();n.select()}}
+cv.addEventListener('pointerup',e=>endDrag(e,false));cv.addEventListener('pointercancel',e=>endDrag(e,true));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drag){endDrag(e,true)}});
+cv.addEventListener('pointerleave',()=>{if(!drag)tip.hidden=hair.hidden=true});
 const hitAt=L=>geo.hits.find(h=>h.ci===L.ci&&L.x>=h.x&&L.x<=h.x+h.w&&L.y>=h.y0&&L.y<=h.y1);
 const isBox=h=>h.ev.exists<1&&!observed&&!logs[h.ev.id+'|'+cols[h.ci]];
 cv.addEventListener('click',e=>{
-  const L=locate(e);if(!L)return;
+  if(justDragged)return;const L=locate(e);if(!L)return;
   if(L.header){logDate=cols[L.ci];draw();renderLog();return}
   const hit=hitAt(L);if(!hit)return;
   if(isBox(hit)){const key=hit.ev.id+'|'+cols[hit.ci];if(boxState[key]===undefined)boxState[key]=Math.random()<hit.ev.exists;else delete boxState[key];refreshAll();query(e);return}
