@@ -140,3 +140,49 @@ test('calendar.json leaves out private events and round-trips', async () => {
   assert.equal(j.events.length, app.events.length - 1);
   assert.deepEqual(j.events.map(app.norm), app.events.slice(1));
 });
+
+test('CRPS matches closed forms', async () => {
+  const app = await loadApp();
+  near(app.crpsSample(Float64Array.from({ length: 50 }, () => 10), 13), 3, 1e-9, 'point forecast: |x − y|');
+  const r = app.mulberry32(3), xs = Float64Array.from({ length: 40000 }, () => app.gauss(r)).sort();
+  near(app.crpsSample(xs, 0), 2 * 0.3989423 - 1 / Math.sqrt(Math.PI), 0.01, 'standard normal at its mean'); // 0.2337
+});
+
+test('calibration check: logs drawn from the plan itself come out calibrated', async () => {
+  const app = await loadApp();
+  app.events = [ev(app, 'a', { type: 'normal', mu: 600, sigma: 15 }, { type: 'lognormal', median: 60, spread: 0.3 }), ev(app, 'b', { type: 'skewed', mu: 1000, sigma: 20, skew: 0.7 }, { type: 'normal', median: 45, sd: 10 })];
+  for (const e of app.events) e.days = [0, 1, 2, 3, 4, 5, 6];
+  const logs = {}, r = app.mulberry32(11);
+  app.logs = {}; app.boxState = {}; app.learnAll();
+  for (let i = 1; i <= 120; i++) { const D = app.addDays('2026-10-22', -i), res = app.runDay(D, r, 1).res; for (const id in res) logs[id + '|' + D] = { a: res[id].S[0], d: res[id].E[0] }; }
+  app.logs = logs;
+  const bt = app.backtest(600), all = [...bt.arr, ...bt.fin];
+  assert.ok(all.length >= 400, `scored ${all.length}`);
+  const cov = all.filter(x => x.in80Plan).length / all.length;
+  near(cov, 0.8, 0.05, '80% plan intervals cover about 80%');
+  const pitMean = all.reduce((s, x) => s + x.pit, 0) / all.length;
+  near(pitMean, 0.5, 0.04, 'PIT centred');
+});
+
+test('when the real you differs from the plan, learning beats the plan and the check shows it', async () => {
+  const app = await loadApp();
+  app.events = app.SAMPLE().map(app.norm); app.logs = {}; app.boxState = {};
+  app.simulateAll(); app.simulateLogs(8);
+  const bt = app.backtest(600), all = [...bt.arr, ...bt.fin];
+  const m = f => all.reduce((s, x) => s + f(x), 0) / all.length;
+  assert.ok(all.length > 100, `scored ${all.length}`);
+  assert.ok(m(x => x.crps) < m(x => x.crpsPlan), `CRPS learned ${m(x => x.crps).toFixed(1)} < plan ${m(x => x.crpsPlan).toFixed(1)}`);
+  assert.ok(m(x => (x.in80Plan ? 1 : 0)) < 0.7, 'the plan alone is visibly miscalibrated');
+});
+
+test('find a time: an empty week is fully clear; a fully booked window has no clear slot', async () => {
+  const app = await loadApp();
+  app.logs = {}; app.boxState = {};
+  app.events = []; app.simulateAll();
+  let s = app.suggestSlots({ dur: 60, lo: 600, hi: 1200, mode: 'week' });
+  assert.ok(s.length > 0 && s.every(x => x.p === 1), 'empty week: every suggestion is 100% clear');
+  app.events = [app.mk('busy', 'busy', 0, [0, 1, 2, 3, 4, 5, 6], { type: 'fixed', mu: 540 }, { type: 'fixed', median: 720 })];
+  app.simulateAll();
+  s = app.suggestSlots({ dur: 60, lo: 600, hi: 1200, mode: 'week' });
+  assert.ok(s.every(x => x.p === 0 && x.worst.id === 'busy'), 'booked 09:00–21:00: no slot between 10:00 and 20:00 is clear');
+});

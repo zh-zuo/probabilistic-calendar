@@ -31,6 +31,8 @@ The [live app](https://zh-zuo.github.io/probabilistic-calendar/) opens on a demo
 - **Distributions**: arrivals as above; durations right-skewed (meetings run long), symmetric, or fixed. Each event is a cloud of dots whose density is the chance you're there (2,500 simulated weeks).
 - **Chained events**: "Dinner starts 20 ± 10 min after Climbing ends", so lateness propagates. If the first event does not happen, the chained one either happens at its own time or is skipped too (your choice). The day-ends strip shows the chance each day is done by your bedtime.
 - **Timing planner**: slide your plan earlier or later and see the chance you arrive or finish by a deadline; or ask "to be 90% sure, when do I start?"
+- **Find a time**: give a length and a window; it suggests the slots least likely to collide with anything already planned, names the main risk for each, and adds one with a click.
+- **Can you trust the odds?**: every logged event is forecast again from earlier logs only and compared with what happened (80% range coverage, a calibration histogram, and forecast error with and without learning). *Try with simulated logs* shows it working before you have data.
 - **Bets**: bet on your own week. Bets settle themselves when you log the event, and the page keeps a Brier score for you and for the model.
 - **Schrödinger blocks**: events with less than 100% chance of happening are free and busy at once until you click to open the box.
 - **Invites**: copy a link that carries your arrival distribution; whoever opens it gets the event plus meet-up odds.
@@ -76,7 +78,7 @@ Single static `index.html`, no build step.
 
 ## The model, and how it is tested
 
-[MODEL.md](MODEL.md) specifies exactly what is simulated and learned, and which parts are heuristics (the learning is a shrinkage estimator, not a full Bayesian model; calibration is not yet validated).
+[MODEL.md](MODEL.md) specifies exactly what is simulated and learned, and which parts are heuristics (the learning is a shrinkage estimator, not a full Bayesian model), and reports measured calibration.
 
 The model is tested by running the app's own script under Node, with no dependencies:
 

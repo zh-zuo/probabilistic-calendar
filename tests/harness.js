@@ -67,6 +67,7 @@ async function loadApp() {
       norm, mk, SAMPLE, occOf, runDay, simDay, statsOf, ecdf, quant, sOwn, sDur, skewNoise, gauss, mulberry32,
       dayOrder, dependsOn, repairLinks, learnAll, eff, shrink, parseICS, icsTime, importICS, calendarJSON,
       addDays, dowOf, mondayOf, todayKey, T0, T1, BIN, NB,
+      crpsSample, backtest, simulateLogs, suggestSlots, slotOdds, simulateAll, get cols(){return cols},
       ready: () => new Promise(r => setTimeout(r, 30)),
     };`;
   const fn = new Function(...names, src + '\n' + expose);

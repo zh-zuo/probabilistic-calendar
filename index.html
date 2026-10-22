@@ -153,6 +153,15 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
 .bet-top{display:flex;justify-content:space-between;gap:8px}
 .bet-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .bet .res-y{color:var(--good)} .bet .res-n{color:var(--warn)}
+.slot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--grid);font-size:13px}
+.slot:first-child{border-top:none}
+.slot .p{font-family:var(--f-mono);font-weight:500;font-size:15px}
+.slot .p.ok{color:var(--good)} .slot .p.mid{color:var(--accent)} .slot .p.bad{color:var(--warn)}
+.slot .why{grid-column:1/-1;color:var(--muted);font-size:12px}
+.calib{display:grid;gap:8px;font-size:13px}
+.calib .verdict{font-weight:600}
+.calib .verdict.ok{color:var(--good)} .calib .verdict.bad{color:var(--warn)}
+#cal-pit{width:100%;height:90px;display:block}
 .score{font-size:13px;background:var(--bg);border-radius:6px;padding:8px 10px;display:grid;gap:3px}
 .src{font-size:13px;background:var(--bg);border-radius:6px;padding:8px 10px;display:grid;gap:6px}
 .sheet{position:fixed;top:0;right:0;bottom:0;width:min(410px,100vw);z-index:20;background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 40px rgba(0,0,0,.16);display:grid;grid-template-rows:auto minmax(0,1fr);padding-top:env(safe-area-inset-top,0px);padding-right:env(safe-area-inset-right,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
@@ -218,6 +227,15 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
         <div id="log-rows"></div>
       </div>
 
+      <div class="panel" id="finder">
+        <div class="panel-head"><h2>Find a time</h2></div>
+        <p class="hint">Suggests slots where a new event is least likely to collide with anything already planned.</p>
+        <div class="pair"><label class="field">What<input id="ft-name" value="Workout" autocomplete="off"></label><label class="field">How long (min)<input type="number" id="ft-dur" value="60" min="5" max="600"></label></div>
+        <div class="pair"><label class="field">Not before<input type="time" id="ft-lo" value="09:00"></label><label class="field">Done by<input type="time" id="ft-hi" value="21:00"></label></div>
+        <label class="field">Which days<select id="ft-days"><option value="rest">Rest of this week</option><option value="today">Today</option><option value="week">Any day this week</option></select></label>
+        <div id="ft-out"></div>
+      </div>
+
       <div class="panel">
         <div class="panel-head"><h2 id="riskTitle">Collision risk</h2></div>
         <p class="hint" id="riskHint"></p>
@@ -253,6 +271,13 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
         <div><button class="btn small" id="bt-place">Place bet</button></div>
         <div id="bt-score"></div>
         <div id="bt-list"></div>
+      </div>
+
+      <div class="panel" id="calib">
+        <div class="panel-head"><h2>Can you trust the odds?</h2></div>
+        <p class="hint">Each logged event is forecast again using only logs from earlier dates, then compared with what actually happened.</p>
+        <div id="cal-body"></div>
+        <div class="btnrow"><button class="btn small" id="cal-sim">Try with simulated logs</button><button class="btn small" id="cal-unsim" hidden>Remove simulated logs</button></div>
       </div>
 
       <div class="panel" id="data">
@@ -380,8 +405,8 @@ function learnAll(){
     if(out.nA||out.nD)learned[e.id]=out}
 }
 function eff(e){const L=learned[e.id];if(!L||e.learn===false)return e;const x={...e,start:{...e.start},dur:{...e.dur}};
-  if(L.nA){if(e.start.type==='after'){x.start.gap=L.gap;x.start.gapSigma=L.gapSigma}else x.start={...x.start,type:'normal',mu:L.mu,sigma:L.sigma}}
-  if(L.nD)x.dur={...x.dur,type:'lognormal',median:L.median,spread:L.spread};return x}
+  if(L.nA){if(e.start.type==='after'){x.start.gap=L.gap;x.start.gapSigma=L.gapSigma}else x.start={...x.start,type:'normal',mu:L.mu,sigma:L.sigma*Math.sqrt(1+1/(3+L.nA))}}
+  if(L.nD)x.dur={...x.dur,type:'lognormal',median:L.median,spread:L.spread*Math.sqrt(1+1/(3+L.nD))};return x}
 
 /* ---------- simulation ---------- */
 /* skew-normal noise with its median moved to 0; skew in [-1,1] maps to shape alpha in [-6,6] */
@@ -633,7 +658,7 @@ function renderLog(){
   const order=day.order.slice().sort((a,b)=>((day.st[a.id].s50??plannedStart(a))-(day.st[b.id].s50??plannedStart(b))));
   if(!order.length){box.innerHTML='<p class="empty">Nothing planned on this day.</p>';return}
   box.innerHTML=order.map(e=>{const st=day.st[e.id],lg=logs[e.id+'|'+key]||{},has=lg.a!=null||lg.d!=null;
-    const exp=has?`<span class="logged">Logged${lg.a!=null&&lg.d!=null?`: ${fmtDur(lg.d-lg.a)}`:''}</span>`:st.n?`Expect ${fmt(st.s05)}–${fmt(st.s95)}, done by ${fmt(st.e90)}`:'Box opened: not happening';
+    const exp=has?`<span class="logged">Logged${lg.sim?' (simulated)':''}${lg.a!=null&&lg.d!=null?`: ${fmtDur(lg.d-lg.a)}`:''}</span>`:st.n?`Expect ${fmt(st.s05)}–${fmt(st.s95)}, done by ${fmt(st.e90)}`:'Box opened: not happening';
     return `<div class="logrow" data-ev="${e.id}"><div class="logname"><i class="sw" style="background:${k.c[e.color%8]}"></i><b>${esc(e.name)}</b><span class="hint">${exp}</span></div>
       <div class="logctl"><label class="field">Arrived<input type="time" id="lg-a-${e.id}" data-log="a" value="${lg.a!=null?fmt(lg.a):''}"></label><label class="field">Done<input type="time" id="lg-d-${e.id}" data-log="d" value="${lg.d!=null?fmt(lg.d):''}"></label></div>
       <div class="bet-btns">${isToday?`<button class="btn small" data-now="a">Arrived now</button><button class="btn small" data-now="d">Done now</button>`:''}${has?'<button class="btn small" data-clear="1">Clear</button>':''}${!e.date?'<button class="linkbtn" data-skip="1">Skip this date</button>':''}</div></div>`}).join('');
@@ -777,7 +802,7 @@ let pending=0;
 function refreshAll(){
   simulateAll();
   if(observed&&!flip&&!flipSummary)observe();
-  renderWeekLabel();draw();renderRisks();renderDayEnds();renderLog();renderPlanner();renderBets();renderSource();
+  renderWeekLabel();draw();renderRisks();renderDayEnds();renderLog();renderPlanner();renderBets();renderSource();renderFinder();renderCalib();
   const ev=byId(openId);if(ev){const row=document.querySelector(`.ev-row[data-id="${ev.id}"]`);if(row)row.innerHTML=rowInner(ev,tok());const st=$('#ed-stats');if(st)st.innerHTML=statsHTML(ev)}
 }
 const editedRefresh=()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(()=>{saveEvents();refreshAll()})};
@@ -949,6 +974,95 @@ $('#flip').addEventListener('click',()=>{
 });
 function finishTally(t){return{coll:Math.round(t.coll*100/t.n),pairs:Object.fromEntries(Object.entries(t.pairs).map(([k,v])=>[k,{...v,n:Math.round(v.n*100/t.n)}])),latest:t.latest,latestCi:t.latestCi,met:t.meetTries?t.met:null,meetTries:t.meetTries}}
 
+/* ---------- find a time ---------- */
+/* For a new event of typical length dur (lognormal, log-spread 0.25), starting at t on day column ci:
+   the fraction of simulated days in which it overlaps nothing that happens, plus which event causes most collisions. */
+function slotOdds(ci,t,durs){const day=sims[ci],n=durs.length,blame={};let free=0;
+  for(let i=0;i<n;i++){const end=t+durs[i];let hit=null;for(const e of day.order){const R=day.res[e.id];if(R.H[i]&&R.S[i]<end&&t<R.E[i]){hit=e.id;break}}
+    if(hit)blame[hit]=(blame[hit]||0)+1;else free++}
+  const worst=Object.entries(blame).sort((a,b)=>b[1]-a[1])[0];return{p:free/n,worst:worst?{id:worst[0],p:worst[1]/n}:null}}
+function suggestSlots({dur,lo,hi,mode,max=5,step=15}){
+  const n=sims.length?sims[0].res&&Object.values(sims[0].res)[0]?Object.values(sims[0].res)[0].S.length:N:N,r=mulberry32(4242),durs=new Float64Array(n);
+  for(let i=0;i<n;i++)durs[i]=dur*Math.exp(0.25*gauss(r));
+  const tk=todayKey(),now=nowMinutes(),cands=[];
+  for(let ci=0;ci<cols.length;ci++){const key=cols[ci];
+    if(mode==='today'&&key!==tk)continue;if(mode==='rest'&&key<tk)continue;
+    let t0=Math.ceil(lo/step)*step;if(key===tk)t0=Math.max(t0,Math.ceil((now+15)/step)*step);
+    for(let t=t0;t+dur<=hi;t+=step){const o=slotOdds(ci,t,durs);cands.push({ci,key,t,...o})}}
+  cands.sort((a,b)=>b.p-a.p||a.key.localeCompare(b.key)||a.t-b.t);
+  const out=[];for(const c of cands){if(out.some(o=>o.key===c.key&&Math.abs(o.t-c.t)<Math.max(60,dur)))continue;out.push(c);if(out.length>=max)break}
+  return out}
+let ftTimer=0;
+function renderFinder(){const box=$('#ft-out');if(!box)return;
+  const dur=Math.max(5,Math.min(600,+$('#ft-dur').value||60)),lo=tmin($('#ft-lo').value)??540,hi=tmin($('#ft-hi').value)??1260,mode=$('#ft-days').value;
+  if(hi-lo<dur){box.innerHTML='<p class="empty">The window is shorter than the event.</p>';return}
+  const sl=suggestSlots({dur,lo,hi,mode});
+  if(!sl.length){box.innerHTML=`<p class="empty">No ${mode==='today'?'time left today':'days left this week'} in that window. Try "Any day this week" or the next week.</p>`;return}
+  box.innerHTML=sl.map(s=>{const w=s.worst&&byId(s.worst.id),cls=s.p>=0.9?'ok':s.p>=0.6?'mid':'bad';
+    return `<div class="slot"><span><b>${shortDay(s.key)}</b> · <span class="num">${fmt(s.t)}–${fmt(s.t+dur)}</span></span><span class="p ${cls}">${s.p>=1?'100%':pct(s.p)} clear</span>
+      <span class="why">${w?`Main risk: ${esc(w.name)} (${pct(s.worst.p)})`:'Nothing else is planned around then.'} <button class="linkbtn" data-add="${s.key}|${s.t}">Add it</button></span></div>`}).join('')+
+    `<p class="hint">"Clear" is the chance the new event, if it runs long or short like a typical ${dur}-minute event, overlaps nothing that happens.</p>`}
+const scheduleFinder=()=>{clearTimeout(ftTimer);ftTimer=setTimeout(renderFinder,120)};
+for(const id of ['ft-dur','ft-lo','ft-hi','ft-days'])byEl(id).addEventListener('input',scheduleFinder);
+$('#ft-out').addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(!b)return;const[key,t]=b.dataset.add.split('|'),dur=Math.max(5,+$('#ft-dur').value||60);
+  const used=new Set(events.map(x=>x.color)),color=[0,1,2,3,4,5,6,7].find(c=>!used.has(c))??events.length%8;
+  const ev=mk('e'+Date.now().toString(36),$('#ft-name').value.trim()||'New event',color,[dowOf(key)],{mu:+t,sigma:5},{median:dur,spread:0.25},{date:key});
+  events.push(ev);openId=ev.id;afterStructural()});
+
+/* ---------- calibration: chronological holdout over your logs ---------- */
+/* CRPS of a sample forecast xs (sorted) against outcome y: E|X−y| − ½E|X−X'|, in minutes. */
+function crpsSample(xs,y){const n=xs.length;let a=0,b=0;for(let i=0;i<n;i++){a+=Math.abs(xs[i]-y);b+=(2*(i+1)-n-1)*xs[i]}return a/n-b/(n*n)}
+function backtest(nSamp=800){
+  const keys=Object.keys(logs);const out={arr:[],fin:[]};if(!keys.length)return out;
+  const byDate={};for(const k of keys){const i=k.lastIndexOf('|');(byDate[k.slice(i+1)]=byDate[k.slice(i+1)]||[]).push(k.slice(0,i))}
+  const saved={logs,boxState,conds};
+  try{boxState={};conds=new Set();
+    for(const D of Object.keys(byDate).sort()){
+      const prior={};for(const k of keys)if(k.slice(k.lastIndexOf('|')+1)<D)prior[k]=saved.logs[k];
+      logs=prior;learnAll();const L=runDay(D,mulberry32(hashStr('bt'+D)),nSamp);
+      learned={};const P=runDay(D,mulberry32(hashStr('bt'+D)),nSamp);
+      for(const id of byDate[D]){const obs=saved.logs[id+'|'+D],RL=L.res[id],RP=P.res[id];if(!RL||!RP)continue;
+        for(const[f,arr,list]of[['a','S',out.arr],['d','E',out.fin]]){const y=obs[f];if(y==null)continue;
+          const pick=R=>{const v=[];for(let i=0;i<R[arr].length;i++)if(R.H[i])v.push(R[arr][i]);return Float64Array.from(v).sort()};
+          const xl=pick(RL),xp=pick(RP);if(xl.length<50||xp.length<50)continue;
+          list.push({id,D,pit:ecdf(xl,y),in80:y>=quant(xl,.1)&&y<=quant(xl,.9),crps:crpsSample(xl,y),in80Plan:y>=quant(xp,.1)&&y<=quant(xp,.9),crpsPlan:crpsSample(xp,y)})}}}
+  }finally{logs=saved.logs;boxState=saved.boxState;conds=saved.conds;learnAll()}
+  return out}
+let calibKey='',calibRes=null,calibTimer=0;
+function renderCalib(){clearTimeout(calibTimer);calibTimer=setTimeout(renderCalibNow,calibKey?500:0)}
+function renderCalibNow(){
+  const key=hashStr(JSON.stringify(logs)+JSON.stringify(events)+dayLate)+'';const anySim=Object.values(logs).some(l=>l.sim);
+  $('#cal-unsim').hidden=!anySim;$('#cal-sim').hidden=anySim;
+  if(key!==calibKey){calibKey=key;calibRes=backtest(500)}
+  const R=calibRes,all=[...R.arr,...R.fin],body=$('#cal-body');
+  if(all.length<1){body.innerHTML='<p class="empty">Nothing to check yet. Log when events actually start and finish, and this panel will test the forecasts against what happened. Or try it with simulated logs.</p>';return}
+  const m=(xs,f)=>xs.length?xs.reduce((a,x)=>a+f(x),0)/xs.length:NaN,cov=m(all,x=>x.in80?1:0),covP=m(all,x=>x.in80Plan?1:0),cr=m(all,x=>x.crps),crP=m(all,x=>x.crpsPlan);
+  const n=all.length,band=1.96*Math.sqrt(0.16/n);
+  const verdict=n<10?['','Too few logs to judge yet; about 10 or more makes this meaningful.']:Math.abs(cov-0.8)<=band?['ok','Well calibrated: the 80% ranges contain what happens about 80% of the time.']:cov<0.8?['bad','Overconfident: the ranges are too narrow, so reality lands outside them too often.']:['bad','Underconfident: the ranges are wider than they need to be.'];
+  const row=(lbl,xs)=>xs.length?`<span>${lbl}: <b class="num">${pct(m(xs,x=>x.in80?1:0))}</b> inside the 80% range <span class="hint">(${xs.length} logged)</span></span>`:'';
+  body.innerHTML=`<div class="calib"><span class="verdict ${verdict[0]}">${verdict[1]}</span>${row('Arrivals',R.arr)}${row('Finishes',R.fin)}
+    <canvas id="cal-pit" aria-label="Histogram of where outcomes fell within the forecasts; flat means calibrated"></canvas>
+    <span class="hint">Where each outcome fell within its forecast, from earliest (left) to latest (right). Flat means calibrated; a U shape means overconfident; a slope means biased early or late.</span>
+    <span>Average forecast error (CRPS): <b class="num">${cr.toFixed(1)} min</b> learning from your logs, <b class="num">${crP.toFixed(1)} min</b> from the plan alone.${cr<crP*0.95?' Learning helps.':cr>crP*1.05?' Learning is not helping yet.':''}</span>
+    <span class="hint">With the plan alone, the 80% ranges contained ${pct(covP)} of outcomes.</span></div>`;
+  const cvp=byEl('cal-pit'),dpr=window.devicePixelRatio||1,W=cvp.clientWidth||300,H=90,g=cvp.getContext('2d'),k=tok();
+  cvp.width=W*dpr;cvp.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  const B=10,bins=new Array(B).fill(0);for(const x of all)bins[Math.min(B-1,Math.floor(x.pit*B))]++;const mx=Math.max(...bins,n/B*1.6),bw=(W-8)/B,Y=v=>H-6-v/mx*(H-14);
+  for(let b=0;b<B;b++){g.fillStyle=rgba(k.accent,0.55);g.fillRect(4+b*bw+1,Y(bins[b]),bw-2,H-6-Y(bins[b]))}
+  g.setLineDash([4,3]);g.strokeStyle=k.ink;g.beginPath();g.moveTo(4,Y(n/B));g.lineTo(W-4,Y(n/B));g.stroke();g.setLineDash([]);
+}
+/* Demo data: four weeks of logs from a "true you" who is later and slower than the plan; 20% of days left unlogged. */
+const TRUTH={id:'__truth',label:'',desc:'',shift:12,noise:1.3,dur:1.2,spread:1.2};
+function simulateLogs(weeks=4){const tk=todayKey(),saved={conds,boxState,dayLate},r=freshRng();let n=0;
+  CONDS.push(TRUTH);conds=new Set([TRUTH.id]);boxState={};dayLate=Math.max(dayLate,8);
+  try{for(let i=weeks*7;i>=1;i--){const D=addDays(tk,-i),res=runDay(D,r,1).res;
+    for(const id in res){const R=res[id],k=id+'|'+D;if(!R.H[0]||logs[k]||r()<0.2)continue;logs[k]={a:Math.round(R.S[0]),d:Math.round(R.E[0]),sim:true};n++}}}
+  finally{CONDS.pop();conds=saved.conds;boxState=saved.boxState;dayLate=saved.dayLate}
+  saveLogs();return n}
+$('#cal-sim').addEventListener('click',()=>{const n=simulateLogs();refreshAll();renderList();$('#io-msg').textContent='';
+  $('#cal-body').insertAdjacentHTML('afterbegin',`<p class="hint">Added ${n} simulated logs over the past 4 weeks, from a "true you" who arrives about 12 minutes later and takes about 20% longer than planned. They are marked (simulated) in the log.</p>`)});
+$('#cal-unsim').addEventListener('click',()=>{for(const k of Object.keys(logs))if(logs[k].sim)delete logs[k];saveLogs();refreshAll();renderList()});
+
 /* ---------- files: calendar.json, backup, .ics ---------- */
 function calendarJSON(){const pub=events.filter(e=>!e.private);
   return '{\n  "version": 3,\n  "events": [\n'+pub.map(e=>'    '+JSON.stringify(e)).join(',\n')+'\n  ]\n}\n'}
@@ -1043,10 +1157,10 @@ async function boot(){
   const local=ls.get(K.ev)||ls.get(K.old);
   if(Array.isArray(local)&&local.length&&JSON.stringify(local.map(norm))!==baseline){events=local.map(norm);source='local'}else{events=base;source=repoCal?'repo':'demo'}
   setCols();renderConds();simulateAll();populateSelects();resetPlannerTarget();resetBetTarget();
-  renderWeekLabel();draw();renderRisks();renderDayEnds();renderLog();renderPlanner();renderBets();renderList();renderSource();readInvite();
+  renderWeekLabel();draw();renderRisks();renderDayEnds();renderLog();renderPlanner();renderBets();renderList();renderSource();renderFinder();renderCalib();readInvite();
   let rz;new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(()=>{draw();renderPlanner()})}).observe(cal);
   if(document.fonts)document.fonts.ready.then(()=>{draw();renderPlanner()});
-  const rethemed=()=>{draw();renderRisks();renderList();renderConds();renderPlanner();renderLog()};
+  const rethemed=()=>{draw();renderRisks();renderList();renderConds();renderPlanner();renderLog();renderCalibNow()};
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rethemed);
   new MutationObserver(rethemed).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
   setInterval(()=>{if(flip)return;if(cols.includes(todayKey())&&Object.keys(logs).some(k=>k.endsWith('|'+todayKey())))refreshAll();else draw()},60000);

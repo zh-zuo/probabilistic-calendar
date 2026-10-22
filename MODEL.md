@@ -58,10 +58,11 @@ For an event with plan centre μ₀ and spread σ₀, and n logged arrival times
 
 Durations are learned the same way on the log scale, starting from the planned median and spread. For chained events, the gap after the parent is learned instead of the arrival time, from days where both were logged.
 
+The forecast then widens the spread by the posterior-predictive factor √(1 + 1/(k + n)), which accounts for the uncertainty in μ̂ itself (for a normal model with known variance, the predictive variance is σ²(1 + 1/(k + n))). σ̂ is still a point estimate, so with few logs the intervals remain a little too narrow; see section 6.
+
 Consequences you should know about:
 
 - After learning, arrival becomes **Gaussian** and duration **lognormal**, whatever shape the plan had.
-- The forecast uses the point estimates μ̂ and σ̂, not a posterior predictive distribution. With few logs, the uncertainty in μ̂ itself is ignored, so intervals are somewhat too narrow.
 - Learning is **marginal**: it cannot learn that you are late only when it rains, or only on Mondays.
 - Days you forget to log are missing, and if the days you remember are unusual, the estimate is biased.
 
@@ -76,11 +77,29 @@ Consequences you should know about:
 - circular or dangling "after" links are repaired instead of hanging;
 - shared lateness gives the expected correlation (0 when off, 0.5 when σ_day equals σ);
 - learning reproduces the shrinkage formula;
+- CRPS matches its closed forms; logs drawn from the plan itself come out calibrated; learning beats the plan when the real timing differs;
+- *Find a time* reports 100% clear on an empty week and 0% inside a fully booked window;
 - `.ics` import handles a weekly rule with a skipped date, a one-off with a duration, and skips all-day events;
 - `calendar.json` leaves out private events and round-trips.
 
-## 6. Not yet validated
+## 6. Calibration: checked on your own logs
 
-- **Calibration**: whether events the app gives 80% to finish on time actually do so 80% of the time. The plan is to score each logged occurrence against a forecast made only from logs before that date (a chronological holdout), reporting interval coverage and CRPS.
+The **Can you trust the odds?** panel runs a chronological holdout over your logs: every logged arrival and finish is forecast again using only logs from earlier dates (with conditions and opened boxes switched off), and compared with what happened. It reports:
+
+- **80% interval coverage**: the share of outcomes inside the central 80% range. A calibrated forecast gives about 80%; the panel calls it calibrated when coverage is within the 95% binomial band 0.8 ± 1.96·√(0.16/n), and only after about 10 scored outcomes.
+- **PIT histogram**: where each outcome fell within its forecast distribution. Flat means calibrated, U-shaped means overconfident, sloped means biased.
+- **CRPS** (continuous ranked probability score, in minutes; lower is better), with learning and with the plan alone. CRPS = E|X − y| − ½E|X − X′| for forecast X and outcome y, computed from the samples.
+
+**Measured on simulated data.** *Try with simulated logs* generates four weeks of logs from a "true you" who arrives about 12 minutes later than planned, with 30% more scatter, 20% longer durations, shared daily lateness of 8 minutes, and 20% of days unlogged. Averaged over 12 such runs on the demo week:
+
+| | 80% coverage, all dates | 80% coverage, last 2 weeks | CRPS (min) |
+|---|---|---|---|
+| Plan alone | 52.7% ± 1.4 | 54.3% ± 1.7 | 21.5 |
+| Learning, plug-in spread | 68.4% ± 0.9 | 69.7% ± 2.0 | 17.8 |
+| Learning, predictive spread (current) | 72.0% ± 1.0 | 75.1% ± 1.5 | 17.8 |
+
+(± is the standard error over the 12 runs; CRPS varies by about ±0.5 min between batches.) The plan alone is badly overconfident against this "true you". Learning cuts the forecast error by about a fifth, and the predictive widening brings coverage closer to 80% at no cost in CRPS. The remaining shortfall comes from early dates with few logs, where the plan's too-narrow spread still carries weight. The tests check that logs drawn from the plan itself come out calibrated (coverage 80% ± 5 points over 480 outcomes), and that learning beats the plan when the two differ.
+
+## 7. Not yet validated
 - **Calendar import**: `TZID` times are read as local clock time, monthly and yearly repeats are skipped, and changed single occurrences (`RECURRENCE-ID`) are ignored. Import is a one-time snapshot, not a sync.
 - Correlations other than shared lateness and explicit "after" links are not modelled.
