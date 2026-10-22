@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Probabilistic Calendar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a week grid of probability clouds (canvas) with a day-ends strip, beside a control rail; rail stacks under the grid on phones. */
+:root{
+  --bg:#EEF0F4; --surface:#FBFBFD; --ink:#1A2030; --muted:#5F6880; --line:#D6DAE4; --grid:#E3E6EE;
+  --accent:#2F47C9; --accent-ink:#FFFFFF; --now:#D2342C; --warn:#B4530F; --good:#1E7F4F;
+  --c0:#12867A; --c1:#C9601C; --c2:#B8304F; --c3:#3552C2; --c4:#6F8418; --c5:#8146B8; --c6:#A57A00; --c7:#2D7FA8;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10131B; --surface:#171B26; --ink:#E5E8F1; --muted:#9098AE; --line:#2A3042; --grid:#222838;
+  --accent:#8C9DFF; --accent-ink:#10131B; --now:#FF6B5E; --warn:#F0A060; --good:#5BD49A;
+  --c0:#3CCBB8; --c1:#F2924F; --c2:#F0708E; --c3:#7F98FF; --c4:#B3CC4A; --c5:#BC8CF2; --c6:#E7BE3A; --c7:#5CC0EE;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10131B; --surface:#171B26; --ink:#E5E8F1; --muted:#9098AE; --line:#2A3042; --grid:#222838;
+  --accent:#8C9DFF; --accent-ink:#10131B; --now:#FF6B5E; --warn:#F0A060; --good:#5BD49A;
+  --c0:#3CCBB8; --c1:#F2924F; --c2:#F0708E; --c3:#7F98FF; --c4:#B3CC4A; --c5:#BC8CF2; --c6:#E7BE3A; --c7:#5CC0EE;
+  color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.app{max-width:1360px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.brand{display:grid;gap:4px;min-width:0}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,4vw,40px);letter-spacing:-.02em;line-height:1;margin:0;text-wrap:balance}
+h1 .tilde{color:var(--accent)}
+.lede{margin:0;color:var(--muted);max-width:66ch}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+button{font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:8px;font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--now)}
+.universe{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.invite{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:12px 14px}
+.invite p{margin:0;min-width:0}
+.conds{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.conds .lbl{font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-right:4px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:4px 10px;border-radius:999px;font-size:13px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.cond-note{font-size:12px;color:var(--muted);width:100%}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:18px;align-items:start}
+@media (max-width:960px){.main{grid-template-columns:minmax(0,1fr)}}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:12px;color:var(--muted);margin-top:8px;align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.key-dots{width:28px;height:10px;border-radius:2px;background:radial-gradient(circle,var(--muted) 0.8px,transparent 1.2px) 0 0/4px 4px}
+.key-pill{width:18px;height:10px;border-radius:3px;background:var(--muted)}
+.key-hatch{width:18px;height:10px;border-radius:2px;background:repeating-linear-gradient(135deg,var(--muted) 0 1px,transparent 1px 4px)}
+.key-friend{width:4px;height:12px;background:var(--ink);opacity:.6}
+.key-now{width:18px;height:2px;background:var(--now)}
+.legend input{font:inherit;font-size:12px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.cal-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.cal{position:relative;min-width:720px}
+.cal canvas{display:block;touch-action:pan-y}
+.dayends{display:grid;grid-template-columns:48px repeat(7,minmax(0,1fr));border-top:1px solid var(--line);font-size:12px}
+.dayends > div{padding:7px 6px;display:grid;gap:1px;text-align:center;border-left:1px solid var(--grid)}
+.dayends > div:first-child{border-left:none;text-align:right;color:var(--muted);font-size:11px;line-height:1.25;padding-right:7px}
+.dayends b{font-family:var(--f-mono);font-weight:500;font-size:13px}
+.dayends small{color:var(--muted)}
+.dayends .ok{color:var(--good)} .dayends .bad{color:var(--warn)}
+.hair{position:absolute;height:1px;background:var(--ink);opacity:.55;pointer-events:none}
+.tip{position:absolute;z-index:5;min-width:200px;max-width:260px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;box-shadow:0 6px 24px rgba(0,0,0,.14);pointer-events:none;font-size:13px;display:grid;gap:5px}
+.tip h4{margin:0;font-family:var(--f-mono);font-weight:500;font-size:12px;color:var(--muted);letter-spacing:.04em}
+.tip .row{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center}
+.tip .free{color:var(--muted);border-top:1px solid var(--grid);padding-top:5px;display:flex;justify-content:space-between;gap:8px}
+.tip .box{color:var(--accent);font-size:12px}
+.sw{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+aside{display:grid;gap:14px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:10px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.risk{display:grid;gap:4px}
+.risk-top{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.risk-names{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.meter{height:5px;border-radius:3px;background:var(--grid);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--warn);border-radius:3px}
+.risk small{color:var(--muted);font-size:12px}
+.ev-list{display:grid;gap:6px}
+.ev-row{display:grid;grid-template-columns:10px minmax(0,1fr);gap:4px 10px;align-items:center;text-align:left;width:100%;background:transparent;border:1px solid transparent;border-radius:8px;padding:8px;color:var(--ink)}
+.ev-row:hover{background:var(--bg)}
+.ev-row[aria-expanded="true"]{border-color:var(--line);background:var(--bg)}
+.ev-name{font-weight:600;overflow-wrap:anywhere}
+.ev-sum{grid-column:2;font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+.editor{border:1px solid var(--line);border-top:none;margin-top:-8px;border-radius:0 0 8px 8px;padding:12px;display:grid;gap:12px;background:var(--bg)}
+.field{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.field input:not([type=range]):not([type=checkbox]),.field select{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;width:100%;box-sizing:border-box}
+.field input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink)}
+.check input{accent-color:var(--accent)}
+.sub{display:grid;gap:8px;padding-left:10px;border-left:2px solid var(--line)}
+.days{display:flex;flex-wrap:wrap;gap:4px}
+.days label{display:inline-flex}
+.days input{position:absolute;opacity:0;width:1px;height:1px}
+.days span{font-size:12px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;color:var(--muted);cursor:pointer;background:var(--surface)}
+.days input:checked+span{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.days input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.colors{display:flex;gap:6px;flex-wrap:wrap}
+.colors button{width:22px;height:22px;border-radius:6px;border:2px solid transparent;padding:0}
+.colors button[aria-pressed="true"]{border-color:var(--ink)}
+.range-row{display:flex;gap:8px;align-items:center}
+.range-row input{flex:1}
+.ed-stats{font-size:12.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:grid;gap:3px}
+.ed-actions{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.linkout{font-family:var(--f-mono);font-size:11px;width:100%;box-sizing:border-box;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.real-item{font-size:13px;display:flex;gap:8px;align-items:baseline}
+.real-item .num{color:var(--muted);font-size:12px;flex:none;width:30px}
+.empty{color:var(--muted);font-size:13px;margin:0}
+.foot{font-size:12px;color:var(--muted);margin:0}
+.linkbtn{background:none;border:none;color:var(--muted);text-decoration:underline;padding:0;font-size:12px}
+.big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.big .num{font-size:30px;font-weight:500;line-height:1;color:var(--accent)}
+.big span:last-child{color:var(--muted);font-size:13px}
+#pl-cv{width:100%;height:120px;display:block}
+.answer{margin:0;font-size:13px}
+.bet{display:grid;gap:6px;font-size:13px;padding:8px 0;border-top:1px solid var(--grid)}
+.bet-top{display:flex;justify-content:space-between;gap:8px}
+.bet-btns{display:flex;gap:6px;flex-wrap:wrap}
+.bet .res-y{color:var(--good)} .bet .res-n{color:var(--warn)}
+.score{font-size:13px;background:var(--bg);border-radius:6px;padding:8px 10px;display:grid;gap:3px}
+@media (prefers-reduced-motion:no-preference){.chip,.btn{transition:background .15s,border-color .15s}}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="invite" id="invite" hidden></div>
+
+  <header>
+    <div class="brand">
+      <h1>Probabilistic Calendar<span class="tilde">~</span></h1>
+      <p class="lede">Every event is a distribution. You arrive on a bell curve, meetings run long on a skewed tail, dinner starts when climbing ends, and some blocks stay free and busy at once until you open them.</p>
+    </div>
+    <div class="controls">
+      <span class="universe" id="universe" hidden></span>
+      <button class="btn" id="resample" hidden>Another universe</button>
+      <button class="btn" id="flip">Play 100 universes</button>
+      <button class="btn primary" id="observe">Observe the week</button>
+    </div>
+  </header>
+
+  <div class="conds" id="conds"></div>
+
+  <div class="main">
+    <section>
+      <div class="cal-scroll"><div class="cal" id="cal">
+        <canvas id="cv" aria-label="Week view showing each event as a probability cloud"></canvas>
+        <div class="hair" id="hair" hidden></div>
+        <div class="tip" id="tip" hidden></div>
+        <div class="dayends" id="dayends"></div>
+      </div></div>
+      <div class="legend">
+        <span><i class="key-dots"></i>dot density = chance you're there</span>
+        <span><i class="key-pill"></i>median start</span>
+        <span><i class="key-hatch"></i>Schrödinger block (click to open)</span>
+        <span><i class="key-friend"></i>friend's presence</span>
+        <span><i class="key-now"></i>now</span>
+        <span><label for="bed">Done for the day by</label><input type="time" id="bed" value="22:00"></span>
+      </div>
+    </section>
+
+    <aside>
+      <div class="panel">
+        <div class="panel-head"><h2 id="riskTitle">Collision risk</h2></div>
+        <p class="hint" id="riskHint"></p>
+        <div id="risks" style="display:grid;gap:10px"></div>
+      </div>
+
+      <div class="panel" id="planner">
+        <div class="panel-head"><h2>Timing planner</h2></div>
+        <p class="hint">Pick an event and a deadline, then slide your plan earlier or later.</p>
+        <div class="pair"><label class="field">Event<select id="pl-ev"></select></label><label class="field">Day<select id="pl-day"></select></label></div>
+        <div class="pair"><label class="field">Goal<select id="pl-kind"><option value="arrive">Arrive by</option><option value="finish">Finish by</option></select></label><label class="field">Time<input type="time" id="pl-t"></label></div>
+        <label class="field"><span>Shift my plan <b class="num" id="pl-shift-v">0 min</b></span><input type="range" id="pl-shift" min="-60" max="60" step="1" value="0"></label>
+        <div class="big"><span class="num" id="pl-p">–</span><span id="pl-desc"></span></div>
+        <canvas id="pl-cv" aria-label="Chance of making the deadline as a function of the plan shift"></canvas>
+        <label class="field"><span>I want to be <b class="num" id="pl-conf-v">90%</b> sure</span><input type="range" id="pl-conf" min="50" max="99" value="90"></label>
+        <p class="answer" id="pl-answer"></p>
+        <div><button class="btn small" id="pl-apply">Apply this shift to the calendar</button></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Events</h2><button class="btn small" id="add">Add event</button></div>
+        <div class="ev-list" id="evlist"></div>
+        <p class="foot">Starts with a demo week. Click any event to edit it, or add your own. Edits stay in this browser and never change the demo. <button class="linkbtn" id="reset">Reset to the demo week</button> · <button class="linkbtn" id="blank">Start with an empty week</button></p>
+      </div>
+
+      <div class="panel" id="bets">
+        <div class="panel-head"><h2>Bets</h2></div>
+        <p class="hint">Bet on your own week. Settle each bet once it has happened and see who is better calibrated: you or the model.</p>
+        <div class="pair"><label class="field">Event<select id="bt-ev"></select></label><label class="field">Day<select id="bt-day"></select></label></div>
+        <div class="pair"><label class="field">It will<select id="bt-kind"><option value="finish">finish by</option><option value="arrive">start by</option></select></label><label class="field">Time<input type="time" id="bt-t"></label></div>
+        <label class="field"><span>Your confidence <b class="num" id="bt-you-v">70%</b></span><input type="range" id="bt-you" min="1" max="99" value="70"></label>
+        <p class="answer" id="bt-quote"></p>
+        <div><button class="btn small" id="bt-place">Place bet</button></div>
+        <div id="bt-score"></div>
+        <div id="bt-list"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const byEl=id=>document.getElementById(id);
+const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const T0=7*60,T1=24*60,BIN=5,NB=(T1-T0)/BIN,N=3000;
+const GUT=48,HEAD=34,PPM=0.8;
+const PUBLIC_URL='https://zh-zuo.github.io/probabilistic-calendar/';
+const K={ev:'probcal-events-v2',old:'stochastic-calendar-v1',cond:'probcal-conds',bets:'probcal-bets',bed:'probcal-bed'};
+const ls={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- randomness ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hashStr(s){let h=2166136261;for(const ch of s){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function gauss(r){let u=0;while(u===0)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r())}
+const freshRng=()=>mulberry32((Math.random()*4294967296)>>>0);
+
+/* ---------- formatting ---------- */
+const pad=n=>String(n).padStart(2,'0');
+function fmt(m){m=Math.round(m);const h=Math.floor(m/60);return `${pad(((h%24)+24)%24)}:${pad(((m%60)+60)%60)}`}
+function fmtDur(m){m=Math.round(m);const h=Math.floor(m/60),mm=m%60;return h?(mm?`${h}h ${mm}m`:`${h}h`):`${mm}m`}
+function tmin(v){if(!v)return null;const [h,m]=v.split(':').map(Number);return h*60+m}
+function pct(p){return p<0.01?'<1%':p>0.99?'>99%':Math.round(p*100)+'%'}
+const signed=m=>m===0?'0 min':(m>0?'+':'−')+Math.abs(Math.round(m))+' min';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function daysText(d){const s=[...d].sort((a,b)=>a-b);const j=s.join();if(j==='0,1,2,3,4,5,6')return 'Daily';if(j==='0,1,2,3,4')return 'Weekdays';if(j==='5,6')return 'Weekends';if(!d.length)return 'No days';return s.map(i=>DAYS[i]).join(' ')}
+const byId=id=>events.find(e=>e.id===id);
+function startText(ev){const s=ev.start;if(s.type==='after'){const p=byId(s.after);return `after ${p?p.name:'?'} +${s.gap}m`}if(s.type==='uniform')return `${fmt(s.lo)}–${fmt(s.hi)}`;if(s.type==='fixed')return `${fmt(s.mu)} sharp`;return `${fmt(s.mu)} ± ${s.sigma}m`}
+function durText(ev){const d=ev.dur;if(d.type==='lognormal')return `~${fmtDur(d.median)}, runs long`;if(d.type==='normal')return `${fmtDur(d.median)} ± ${d.sd}m`;return fmtDur(d.median)}
+
+/* ---------- conditions ---------- */
+const CONDS=[
+  {id:'rain',label:'Rain',desc:'arrivals +10 min, more scatter, everything 10% longer',shift:10,noise:1.2,dur:1.1,spread:1},
+  {id:'monday',label:'Monday blues',desc:'Mondays: arrivals +15 min, 50% more scatter',days:[0],shift:15,noise:1.5,dur:1,spread:1},
+  {id:'deadline',label:'Deadline week',desc:'everything 25% longer with a fatter overrun tail',shift:0,noise:1,dur:1.25,spread:1.4},
+  {id:'espresso',label:'Double espresso',desc:'arrivals −8 min, 30% less scatter',shift:-8,noise:0.7,dur:1,spread:1},
+  {id:'friday',label:'Friday feeling',desc:'Fridays: arrivals +5 min, things wrap up 15% faster',days:[4],shift:5,noise:1,dur:0.85,spread:1},
+];
+let conds=new Set(ls.get(K.cond)||[]);
+function condFor(d){const c={shift:0,noise:1,dur:1,spread:1};for(const k of CONDS)if(conds.has(k.id)&&(!k.days||k.days.includes(d))){c.shift+=k.shift;c.noise*=k.noise;c.dur*=k.dur;c.spread*=k.spread}return c}
+
+/* ---------- data ---------- */
+function norm(e){
+  e.start=Object.assign({type:'normal',mu:600,sigma:10,lo:600,hi:660,after:null,gap:15,gapSigma:10},e.start||{});
+  e.dur=Object.assign({type:'lognormal',median:60,spread:0.25,sd:10},e.dur||{});
+  if(e.exists==null)e.exists=1;if(e.friend===undefined)e.friend=null;e.days=e.days||[];if(e.color==null)e.color=0;return e}
+const mk=(id,name,color,days,start,dur,extra)=>norm(Object.assign({id,name,color,days,start,dur},extra||{}));
+const SAMPLE=()=>[
+  mk('wake','Wake up + coffee',6,[0,1,2,3,4,5,6],{mu:570,sigma:20},{median:35,spread:0.3}),
+  mk('deep','Deep work',3,[0,2,3],{type:'after',after:'wake',gap:25,gapSigma:15,mu:630,sigma:20},{median:120,spread:0.35}),
+  mk('coffee','Standup',1,[1,4],{mu:690,sigma:3},{median:45,spread:0.2}),
+  mk('lunch','Lunch',7,[0,1,2,3,4,5,6],{type:'uniform',lo:720,hi:765},{median:35,spread:0.25}),
+  mk('oneone','1:1 meeting',2,[3],{mu:780,sigma:4},{median:60,spread:0.35}),
+  mk('team','Team meeting',4,[4],{mu:840,sigma:3},{median:75,spread:0.25}),
+  mk('cat',"Schrödinger's meeting",5,[2],{type:'uniform',lo:900,hi:960},{median:50,spread:0.3},{exists:0.5}),
+  mk('climb','Climbing gym',0,[0,2,4,5],{mu:1110,sigma:15},{type:'normal',median:100,sd:20},{friend:{mu:1120,sigma:20,median:90,spread:0.25}}),
+  mk('dinner','Dinner',5,[0,1,2,3,4,5,6],{type:'after',after:'climb',gap:20,gapSigma:10,mu:1215,sigma:20},{median:45,spread:0.3}),
+];
+function load(){const v=ls.get(K.ev)||ls.get(K.old);if(Array.isArray(v)&&v.length)return v.map(norm);return SAMPLE()}
+let events=load();
+const save=()=>ls.set(K.ev,events);
+let bets=ls.get(K.bets)||[];
+let bed=ls.get(K.bed)||'22:00';$('#bed').value=bed;
+
+let sims=[],layout=[],conflicts=[],boxState={};
+let observed=false,real=null,universe=0,openId=null,flip=null,flipSummary=null,geo={cw:0,W:0,H:0,hits:[]};
+
+/* ---------- simulation ---------- */
+function sOwn(st,r,c){
+  if(st.type==='fixed')return st.mu+c.shift;
+  if(st.type==='uniform'){const hi=Math.max(st.hi,st.lo),mid=(st.lo+hi)/2;return mid+(r()-0.5)*(hi-st.lo)*c.noise+c.shift}
+  return st.mu+c.shift+st.sigma*c.noise*gauss(r)}
+function sDur(du,r,c){
+  if(du.type==='fixed')return du.median*c.dur;
+  if(du.type==='normal')return Math.max(1,(du.median+du.sd*c.spread*gauss(r))*c.dur);
+  return du.median*c.dur*Math.exp(du.spread*c.spread*gauss(r))}
+function plannedStart(ev){return ev.start.type==='uniform'?ev.start.lo:ev.start.mu}
+function dependsOn(x,target){const seen=new Set();let cur=x;while(cur&&cur.start.type==='after'&&!seen.has(cur.id)){seen.add(cur.id);if(cur.start.after===target.id)return true;cur=byId(cur.start.after)}return false}
+function dayOrder(d){
+  const evs=events.filter(e=>e.days.includes(d)),ids=new Set(evs.map(e=>e.id));
+  const parentOf=e=>e.start.type==='after'&&e.start.after!==e.id&&ids.has(e.start.after)?e.start.after:null;
+  const out=[],done=new Set(),busy=new Set();
+  const visit=e=>{if(done.has(e.id)||busy.has(e.id))return;busy.add(e.id);const p=parentOf(e);if(p)visit(evs.find(x=>x.id===p));busy.delete(e.id);done.add(e.id);out.push(e)};
+  evs.forEach(visit);return{order:out,parentOf};
+}
+function runDay(d,r,n){
+  const{order,parentOf}=dayOrder(d),c=condFor(d),res={};
+  for(const e of order)res[e.id]={S:new Float64Array(n),E:new Float64Array(n),H:new Uint8Array(n),FS:e.friend?new Float64Array(n):null,FE:e.friend?new Float64Array(n):null};
+  for(let i=0;i<n;i++)for(const e of order){
+    const R=res[e.id],box=boxState[e.id+'|'+d],u=r();
+    const h=box!==undefined?box:(e.exists>=1||u<e.exists);
+    const p=parentOf(e);let s;
+    if(p&&res[p].H[i])s=res[p].E[i]+Math.max(0,e.start.gap+e.start.gapSigma*c.noise*gauss(r));
+    else if(e.start.type==='after')s=sOwn({type:'normal',mu:e.start.mu,sigma:e.start.sigma},r,c);
+    else s=sOwn(e.start,r,c);
+    R.S[i]=s;R.E[i]=s+sDur(e.dur,r,c);R.H[i]=h?1:0;
+    if(e.friend){const f=e.friend,fs=f.mu+f.sigma*gauss(r);R.FS[i]=fs;R.FE[i]=fs+f.median*Math.exp(f.spread*gauss(r))}
+  }
+  return{order,res};
+}
+function occOf(S,E,H){
+  const diff=new Float64Array(NB+1);
+  for(let i=0;i<S.length;i++){if(H&&!H[i])continue;
+    let b0=Math.ceil((S[i]-T0)/BIN-0.5),b1=Math.ceil((E[i]-T0)/BIN-0.5);
+    b0=Math.max(0,Math.min(NB,b0));b1=Math.max(0,Math.min(NB,b1));if(b1>b0){diff[b0]++;diff[b1]--}}
+  const occ=new Float64Array(NB);let a=0;for(let b=0;b<NB;b++){a+=diff[b];occ[b]=a/S.length}return occ}
+function statsOf(e,R){
+  const sS=[],sE=[];let over=0,late=0,meet=0,ov=0;const ps=plannedStart(e);
+  for(let i=0;i<R.S.length;i++){if(!R.H[i])continue;const s=R.S[i],en=R.E[i];sS.push(s);sE.push(en);
+    if(en-s>e.dur.median+15)over++;if(s>ps+5)late++;
+    if(R.FS){const o=Math.min(en,R.FE[i])-Math.max(s,R.FS[i]);if(o>0){meet++;ov+=o}}}
+  const n=sS.length;
+  if(!n)return{n:0,pHappen:0,lo:ps,hi:ps+e.dur.median,sS:new Float64Array(0),sE:new Float64Array(0)};
+  const A=Float64Array.from(sS).sort(),B=Float64Array.from(sE).sort(),q=(a,p)=>a[Math.min(n-1,Math.floor(p*n))];
+  return{n,pHappen:n/R.S.length,s05:q(A,.05),s50:q(A,.5),s95:q(A,.95),e50:q(B,.5),e90:q(B,.9),lo:q(A,.003),hi:q(B,.997),pOver:over/n,pLate:late/n,pMeet:meet/n,meanOv:ov/n,sS:A,sE:B};
+}
+function ecdf(a,x){let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m]<=x)lo=m+1;else hi=m}return a.length?lo/a.length:NaN}
+function quant(a,p){return a.length?a[Math.min(a.length-1,Math.floor(p*a.length))]:NaN}
+function simulateAll(){
+  sims=[];
+  for(let d=0;d<7;d++){
+    const{order,res}=runDay(d,mulberry32(0xC0FFEE+d*7919),N);
+    const day={order,res,occ:{},focc:{},st:{}},last=new Float64Array(N).fill(-Infinity);
+    for(const e of order){const R=res[e.id];day.occ[e.id]=occOf(R.S,R.E,R.H);if(e.friend)day.focc[e.id]=occOf(R.FS,R.FE,null);day.st[e.id]=statsOf(e,R);
+      for(let i=0;i<N;i++)if(R.H[i]&&R.E[i]>last[i])last[i]=R.E[i]}
+    day.last=last;sims[d]=day;
+  }
+  computeLayout();computeConflicts();
+}
+function computeLayout(){
+  layout=sims.map(day=>{
+    const evs=day.order.map(e=>({ev:e,lo:day.st[e.id].lo,hi:day.st[e.id].hi,lane:0,lanes:1})).sort((a,b)=>a.lo-b.lo);
+    let cluster=[],cEnd=-1e9,ends=[];const flush=()=>{for(const p of cluster)p.lanes=ends.length};
+    for(const p of evs){if(p.lo>=cEnd&&cluster.length){flush();cluster=[];ends=[]}
+      let li=ends.findIndex(x=>x<=p.lo);if(li<0){li=ends.length;ends.push(p.hi)}else ends[li]=p.hi;p.lane=li;cluster.push(p);cEnd=Math.max(cEnd,p.hi)}
+    flush();return evs});
+}
+function computeConflicts(){
+  const map=new Map();
+  sims.forEach((day,d)=>{const o=day.order;for(let i=0;i<o.length;i++)for(let j=i+1;j<o.length;j++){
+    const A=day.res[o[i].id],B=day.res[o[j].id];let c=0;
+    for(let k=0;k<N;k++)if(A.H[k]&&B.H[k]&&A.S[k]<B.E[k]&&B.S[k]<A.E[k])c++;
+    const p=c/N;if(p<0.005)continue;
+    const first=(day.st[o[i].id].s50||0)<=(day.st[o[j].id].s50||0),a=first?o[i]:o[j],b=first?o[j]:o[i],key=a.id+'|'+b.id;
+    const g=map.get(key)||{a,b,p:0,days:[]};g.p=Math.max(g.p,p);g.days.push(d);map.set(key,g)}});
+  conflicts=[...map.values()].sort((x,y)=>y.p-x.p);
+}
+function observe(){const r=freshRng();real=[];for(let d=0;d<7;d++)real[d]=runDay(d,r,1).res;universe++}
+function rv(id,d){const R=real&&real[d]&&real[d][id];return R?{s:R.S[0],e:R.E[0],h:!!R.H[0],fs:R.FS?R.FS[0]:null,fe:R.FE?R.FE[0]:null}:null}
+function collisionsIn(){const items=[];for(let d=0;d<7;d++){const o=sims[d].order;for(let i=0;i<o.length;i++)for(let j=i+1;j<o.length;j++){
+  let A=o[i],B=o[j],ra=rv(A.id,d),rb=rv(B.id,d);if(!ra||!rb||!ra.h||!rb.h)continue;
+  if(ra.s>rb.s){[A,B]=[B,A];[ra,rb]=[rb,ra]}const ov=Math.min(ra.e,rb.e)-rb.s;if(ov>0.5)items.push({d,A,B,ov,at:rb.s})}}
+  return items.sort((a,b)=>a.d-b.d||a.at-b.at)}
+
+/* ---------- drawing ---------- */
+const cv=$('#cv'),cal=$('#cal'),ctx=cv.getContext('2d');
+function tok(){const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim();
+  return{surface:g('--surface'),ink:g('--ink'),muted:g('--muted'),grid:g('--grid'),line:g('--line'),accent:g('--accent'),now:g('--now'),warn:g('--warn'),c:[0,1,2,3,4,5,6,7].map(i=>g('--c'+i))}}
+function rgba(hex,a){const h=hex.replace('#','');const n=parseInt(h.length===3?h.split('').map(x=>x+x).join(''):h,16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`}
+const yOf=t=>HEAD+(t-T0)*PPM;
+function roundRect(x,y,w,h,r){ctx.beginPath();r=Math.max(0,Math.min(r,h/2,w/2));ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function pill(x,y,w,text,col,k){ctx.save();ctx.beginPath();ctx.rect(x,y-1,w,20);ctx.clip();ctx.font='600 11px "IBM Plex Sans", system-ui, sans-serif';
+  const tw=ctx.measureText(text).width;roundRect(x,y,Math.min(w,tw+10),16,3);ctx.fillStyle=col;ctx.fill();ctx.fillStyle=k.surface;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,x+5,y+8.5);ctx.restore()}
+function draw(){
+  const dpr=window.devicePixelRatio||1,W=cal.clientWidth,H=HEAD+(T1-T0)*PPM+8;
+  geo={W,H,cw:(W-GUT)/7,hits:[]};
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const k=tok(),cw=geo.cw,now=new Date(),today=(now.getDay()+6)%7,nowMin=now.getHours()*60+now.getMinutes();
+  ctx.fillStyle=k.surface;ctx.fillRect(0,0,W,H);ctx.textBaseline='middle';
+  for(let d=0;d<7;d++){const x=GUT+d*cw;ctx.font=`${d===today?600:500} 12px "IBM Plex Sans", system-ui, sans-serif`;ctx.fillStyle=d===today?k.accent:k.muted;ctx.textAlign='center';ctx.fillText(DAYS[d].toUpperCase(),x+cw/2,HEAD/2)}
+  ctx.textAlign='right';ctx.font='11px "IBM Plex Mono", ui-monospace, monospace';
+  for(let h=7;h<=24;h++){const y=Math.round(yOf(h*60))+.5;ctx.strokeStyle=k.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(GUT,y);ctx.lineTo(W,y);ctx.stroke();ctx.fillStyle=k.muted;ctx.fillText(`${pad(h%24)}:00`,GUT-7,y)}
+  for(let d=0;d<=7;d++){const x=Math.round(GUT+d*cw)+.5;ctx.strokeStyle=d===0?k.line:k.grid;ctx.beginPath();ctx.moveTo(x,HEAD-6);ctx.lineTo(x,H);ctx.stroke()}
+  const bh=BIN*PPM;
+  for(let d=0;d<7;d++)for(const p of layout[d]){
+    const ev=p.ev,day=sims[d],st=day.st[ev.id],occ=day.occ[ev.id];
+    const lw=(cw-6)/p.lanes,x=GUT+d*cw+3+p.lane*lw,w=Math.max(4,lw-3),col=k.c[ev.color%8];
+    const key=ev.id+'|'+d,box=boxState[key],isCat=ev.exists<1;
+    geo.hits.push({ev,d,x,w,y0:yOf(p.lo)-4,y1:yOf(p.hi)+4});
+    const fade=observed?0.25:1,rr=mulberry32(hashStr(key));
+    for(let b=0;b<NB;b++){const pr=occ[b];if(pr<0.004)continue;const y=HEAD+b*bh;
+      ctx.fillStyle=rgba(col,pr*0.22*fade);ctx.fillRect(x,y,w,bh);
+      const n=Math.round(pr*w*bh*0.3);ctx.fillStyle=rgba(col,0.85*fade);
+      for(let i=0;i<n;i++)ctx.fillRect(x+rr()*(w-1.2),y+rr()*(bh-0.6),1.3,1.3)}
+    if(ev.friend&&day.focc[ev.id]&&!observed){const fo=day.focc[ev.id];for(let b=0;b<NB;b++){if(fo[b]<0.01)continue;ctx.fillStyle=rgba(k.ink,fo[b]*0.6);ctx.fillRect(x+w-3,HEAD+b*bh,3,bh)}}
+    if(!observed){
+      if(isCat&&box===undefined){
+        const y0=yOf(st.n?st.s05:p.lo),y1=yOf(st.n?st.e90:p.hi);ctx.save();ctx.beginPath();ctx.rect(x,y0,w,y1-y0);ctx.clip();
+        ctx.strokeStyle=rgba(col,0.5);ctx.lineWidth=1;for(let t=-w;t<y1-y0+w;t+=6){ctx.beginPath();ctx.moveTo(x,y0+t);ctx.lineTo(x+w,y0+t-w);ctx.stroke()}
+        ctx.restore();pill(x,yOf(st.n?st.s50:p.lo),w,`${ev.name} · ${pct(ev.exists)} real?`,col,k);
+      }else if(isCat&&box===false){
+        const y0=yOf(plannedStart(ev)),y1=yOf(plannedStart(ev)+ev.dur.median);ctx.save();ctx.setLineDash([4,3]);ctx.strokeStyle=col;ctx.lineWidth=1.2;roundRect(x+.5,y0+.5,w-1,y1-y0,4);ctx.stroke();ctx.restore();
+        ctx.save();ctx.beginPath();ctx.rect(x,y0,w,y1-y0);ctx.clip();ctx.fillStyle=col;ctx.font='600 11px "IBM Plex Sans", system-ui, sans-serif';ctx.textAlign='left';ctx.fillText('Free after all',x+5,y0+10);ctx.restore();
+      }else if(st.n){pill(x,yOf(st.s50),w,isCat?`${ev.name} · it's real`:ev.name,col,k)}
+    }else{
+      const r=rv(ev.id,d);if(!r)continue;
+      if(!r.h){const y0=yOf(r.s),y1=yOf(r.e);ctx.save();ctx.setLineDash([4,3]);ctx.strokeStyle=col;roundRect(x+.5,y0+.5,w-1,Math.max(6,y1-y0),4);ctx.stroke();ctx.restore();
+        ctx.save();ctx.beginPath();ctx.rect(x,y0,w,y1-y0);ctx.clip();ctx.fillStyle=col;ctx.font='600 11px "IBM Plex Sans", system-ui, sans-serif';ctx.textAlign='left';ctx.fillText('Free after all',x+5,y0+10);ctx.restore();continue}
+      const y0=yOf(r.s),y1=yOf(r.e);roundRect(x,y0,w,Math.max(6,y1-y0),4);ctx.fillStyle=rgba(col,0.9);ctx.fill();
+      if(r.fs!=null){ctx.fillStyle=rgba(k.ink,0.7);const fy0=Math.max(yOf(r.fs),HEAD),fy1=Math.min(yOf(r.fe),H);if(fy1>fy0)ctx.fillRect(x+w+0.5,fy0,2.5,fy1-fy0)}
+      ctx.save();ctx.beginPath();ctx.rect(x,y0,w,Math.max(6,y1-y0));ctx.clip();ctx.fillStyle=k.surface;ctx.textAlign='left';
+      ctx.font='600 11px "IBM Plex Sans", system-ui, sans-serif';ctx.fillText(ev.name,x+5,y0+9);
+      if(y1-y0>28){ctx.font='10.5px "IBM Plex Mono", ui-monospace, monospace';ctx.fillText(`${fmt(r.s)}–${fmt(r.e)}`,x+5,y0+22)}
+      ctx.restore();
+    }
+  }
+  if(nowMin>=T0&&nowMin<=T1){const y=yOf(nowMin),x=GUT+today*cw;ctx.strokeStyle=k.now;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+cw,y);ctx.stroke();ctx.fillStyle=k.now;ctx.beginPath();ctx.arc(x+2,y,4,0,7);ctx.fill()}
+}
+
+/* ---------- hover + open the box ---------- */
+const tip=$('#tip'),hair=$('#hair');
+function locate(e){const rect=cv.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
+  if(x<GUT||y<HEAD||y>yOf(T1))return null;return{x,y,d:Math.min(6,Math.floor((x-GUT)/geo.cw)),t:T0+(y-HEAD)/PPM}}
+function query(e){
+  const L=locate(e);if(!L){tip.hidden=hair.hidden=true;return}
+  const{x,y,d,t}=L,b=Math.min(NB-1,Math.max(0,Math.floor((t-T0)/BIN))),k=tok();
+  let rows=[],free=1,boxLine='';
+  for(const p of layout[d]){const ev=p.ev;
+    if(observed){const r=rv(ev.id,d);if(r&&r.h&&r.s<=t&&t<r.e)rows.push({ev,txt:`${fmt(r.s)}–${fmt(r.e)}`})}
+    else{const pr=sims[d].occ[ev.id][b];free*=1-pr;if(pr>=0.005)rows.push({ev,pr,txt:pct(pr)});
+      if(ev.friend&&sims[d].focc[ev.id]){const fp=sims[d].focc[ev.id][b];if(fp>=0.02)rows.push({ev,pr:-1,friend:true,txt:pct(fp)})}
+      const hit=geo.hits.find(h=>h.ev===ev&&h.d===d&&x>=h.x&&x<=h.x+h.w&&y>=h.y0&&y<=h.y1);
+      if(hit&&ev.exists<1)boxLine=boxState[ev.id+'|'+d]===undefined?`${esc(ev.name)} is free and busy at once. Click to open the box.`:'Box opened. Click again to close it.'}}
+  if(!observed)rows.sort((a,b)=>b.pr-a.pr);
+  tip.innerHTML=`<h4>${DAYS[d].toUpperCase()} ${fmt(t)}</h4>`+rows.map(r=>`<div class="row"><i class="sw" style="background:${r.friend?k.ink:k.c[r.ev.color%8]};${r.friend?'width:4px':''}"></i><span>${r.friend?'Friend at '+esc(r.ev.name):esc(r.ev.name)}</span><span class="num">${r.txt}</span></div>`).join('')+
+    (observed?(rows.length?'':`<div class="free"><span>Free in this universe</span></div>`):`<div class="free"><span>Free</span><span class="num">${pct(free)}</span></div>`)+(boxLine?`<div class="box">${boxLine}</div>`:'');
+  tip.hidden=hair.hidden=false;
+  hair.style.left=(GUT+d*geo.cw)+'px';hair.style.width=geo.cw+'px';hair.style.top=y+'px';
+  const tw=tip.offsetWidth,th=tip.offsetHeight;let tx=x+14,ty=y+14;
+  if(tx+tw>geo.W-4)tx=x-tw-14;if(ty+th>geo.H-4)ty=y-th-14;tip.style.left=Math.max(4,tx)+'px';tip.style.top=Math.max(4,ty)+'px';
+}
+cv.addEventListener('pointermove',query);cv.addEventListener('pointerdown',query);
+cv.addEventListener('pointerleave',()=>{tip.hidden=hair.hidden=true});
+cv.addEventListener('click',e=>{
+  if(observed)return;const L=locate(e);if(!L)return;
+  const hit=geo.hits.find(h=>h.d===L.d&&h.ev.exists<1&&L.x>=h.x&&L.x<=h.x+h.w&&L.y>=h.y0&&L.y<=h.y1);if(!hit)return;
+  const key=hit.ev.id+'|'+hit.d;if(boxState[key]===undefined)boxState[key]=Math.random()<hit.ev.exists;else delete boxState[key];
+  refreshAll();query(e);
+});
+
+/* ---------- panels ---------- */
+function renderConds(){
+  const active=CONDS.filter(c=>conds.has(c.id));
+  $('#conds').innerHTML=`<span class="lbl">Conditions</span>`+CONDS.map(c=>`<button class="chip" data-cond="${c.id}" aria-pressed="${conds.has(c.id)}" title="${esc(c.desc)}">${c.label}</button>`).join('')+
+    `<span class="cond-note">${active.length?active.map(c=>`<b>${c.label}</b>: ${esc(c.desc)}`).join(' · '):'Toggle a condition to see how it warps the week.'}</span>`}
+$('#conds').addEventListener('click',e=>{const b=e.target.closest('[data-cond]');if(!b)return;const id=b.dataset.cond;conds.has(id)?conds.delete(id):conds.add(id);ls.set(K.cond,[...conds]);renderConds();if(observed&&!flip)observe();refreshAll()});
+
+function renderDayEnds(){
+  const bt=tmin(bed)??1320;
+  $('#dayends').innerHTML=`<div>day<br>ends</div>`+sims.map(day=>{
+    if(!day.order.length)return `<div><b>–</b><small>free day</small></div>`;
+    const L=Float64Array.from(day.last).sort(),med=quant(L,.5),p=ecdf(L,bt);
+    if(!isFinite(med))return `<div><b>–</b><small>maybe free</small></div>`;
+    return `<div><b>~${fmt(med)}</b><small class="${p>=0.8?'ok':p<0.5?'bad':''}">${pct(p)} by ${fmt(bt)}</small></div>`}).join('');
+}
+$('#bed').addEventListener('input',e=>{bed=e.target.value||'22:00';ls.set(K.bed,bed);renderDayEnds()});
+
+function renderRisks(){
+  const box=$('#risks'),k=tok(),sw=ev=>`<i class="sw" style="background:${k.c[ev.color%8]}"></i>`;
+  if(observed){
+    if(flipSummary&&!flip){const f=flipSummary;
+      $('#riskTitle').textContent='100 universes later';
+      $('#riskHint').textContent=`The calendar shows the last one, universe #${universe}.`;
+      const top=Object.values(f.pairs).sort((a,b)=>b.n-a.n).slice(0,4);
+      box.innerHTML=`<div class="real-item"><span>At least one collision in <b class="num">${f.coll}</b> of 100 weeks. Clean weeks: <b class="num">${100-f.coll}</b>.</span></div>`+
+        top.map(t=>`<div class="risk"><div class="risk-top"><span class="risk-names">${sw(t.A)}${esc(t.A.name)} <span style="color:var(--muted)">→</span> ${sw(t.B)}${esc(t.B.name)}</span><span class="num">${t.n} weeks</span></div><div class="meter"><i style="width:${t.n}%"></i></div></div>`).join('')+
+        (isFinite(f.latest)?`<div class="real-item"><span>Latest finish seen: <b class="num">${fmt(f.latest)}</b> on a ${DAYS[f.latestDay]}.</span></div>`:'')+
+        (f.met!=null?`<div class="real-item"><span>You met your friend at the gym in <b class="num">${f.met}</b> of ${f.meetTries} visits.</span></div>`:'');
+      return}
+    $('#riskTitle').textContent=flip?`Universe ${flip.i} of 100`:`What happened in universe #${universe}`;
+    $('#riskHint').textContent='One sampled week. Collisions that actually occurred:';
+    const items=collisionsIn();
+    let late=null;for(const e of events){if(e.start.type!=='normal')continue;for(const d of e.days){const r=rv(e.id,d);if(r&&r.h&&(!late||r.s-e.start.mu>late.l))late={e,d,l:r.s-e.start.mu}}}
+    box.innerHTML=(items.length?items.map(it=>`<div class="real-item"><span class="num">${DAYS[it.d]}</span><span><b>${esc(it.A.name)}</b> ran into <b>${esc(it.B.name)}</b> by <span class="num">${fmtDur(it.ov)}</span></span></div>`).join(''):`<p class="empty">A clean week. Nothing collided. Enjoy it, it is rare.</p>`)
+      +(late&&late.l>1?`<div class="real-item"><span class="num">${DAYS[late.d]}</span><span>Latest arrival: <b>${esc(late.e.name)}</b>, <span class="num">${fmtDur(late.l)}</span> after plan</span></div>`:'');
+    return;
+  }
+  $('#riskTitle').textContent='Collision risk';
+  $('#riskHint').textContent='Chance two events overlap on a day they share, from 3,000 simulated weeks. Chained events never collide with what they follow.';
+  if(!conflicts.length){box.innerHTML='<p class="empty">No pair overlaps in more than 0.5% of simulated weeks.</p>';return}
+  box.innerHTML=conflicts.slice(0,8).map(c=>`<div class="risk"><div class="risk-top"><span class="risk-names">${sw(c.a)}${esc(c.a.name)} <span style="color:var(--muted)">→</span> ${sw(c.b)}${esc(c.b.name)}</span><span class="num">${pct(c.p)}</span></div><div class="meter"><i style="width:${Math.max(2,c.p*100)}%"></i></div><small>${c.days.length===7?'every day':c.days.map(d=>DAYS[d]).join(', ')}${c.days.length>1?' (worst day shown)':''}</small></div>`).join('');
+}
+
+/* ---------- events list + editor ---------- */
+function rowInner(ev,k){return `<i class="sw" style="background:${k.c[ev.color%8]}"></i><span class="ev-name">${esc(ev.name)}</span><span class="ev-sum">${daysText(ev.days)} · ${esc(startText(ev))} · ${durText(ev)}${ev.exists<1?` · ${pct(ev.exists)} real`:''}${ev.friend?' · with friend':''}</span>`}
+function firstStats(ev){for(const d of ev.days){const s=sims[d]&&sims[d].st[ev.id];if(s&&s.n)return{s,d}}return null}
+function statsHTML(ev){const f=firstStats(ev);if(!f)return '<span>Pick at least one day.</span>';const s=f.s,multi=ev.days.length>1&&ev.start.type==='after';
+  return `${multi?`<span style="color:var(--muted)">Showing ${DAYS[f.d]}</span>`:''}<span>Start: 90% of weeks between <b class="num">${fmt(s.s05)}</b> and <b class="num">${fmt(s.s95)}</b></span><span>Done by <b class="num">${fmt(s.e90)}</b> in 9 weeks out of 10 (median <span class="num">${fmt(s.e50)}</span>)</span><span>Runs 15+ min over: <b class="num">${pct(s.pOver)}</b>${ev.start.type==='normal'?` · 5+ min late: <b class="num">${pct(s.pLate)}</b>`:''}</span>${ev.friend?`<span>Meet-up odds: <b class="num">${pct(s.pMeet)}</b> you overlap, about <b class="num">${fmtDur(s.meanOv)}</b> together on average</span>`:''}`}
+function editorHTML(ev){
+  const s=ev.start,d=ev.dur,k=tok(),opt=(v,l,cur)=>`<option value="${v}"${v===cur?' selected':''}>${l}</option>`;
+  const parents=events.filter(x=>x.id!==ev.id&&!dependsOn(x,ev));const f=ev.friend;
+  return `<div class="editor" id="editor">
+  <label class="field">Name<input id="ed-name" value="${esc(ev.name)}" autocomplete="off"></label>
+  <div class="field">Days<div class="days">${DAYS.map((n,i)=>`<label><input type="checkbox" id="ed-day-${i}"${ev.days.includes(i)?' checked':''}><span>${n}</span></label>`).join('')}</div></div>
+  <label class="field">When it starts<select id="ed-stype">${opt('normal','Bell curve around a time',s.type)}${opt('uniform','Any time in a window',s.type)}${opt('fixed','Exactly on time',s.type)}${parents.length?opt('after','Right after another event',s.type):''}</select></label>
+  ${s.type==='normal'?`<div class="pair"><label class="field">Centered at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">Spread (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
+   :s.type==='uniform'?`<div class="pair"><label class="field">Earliest<input type="time" id="ed-lo" value="${fmt(s.lo)}"></label><label class="field">Latest<input type="time" id="ed-hi" value="${fmt(s.hi)}"></label></div>`
+   :s.type==='after'?`<label class="field">After<select id="ed-after">${parents.map(x=>opt(x.id,esc(x.name),s.after)).join('')}</select></label>
+     <div class="pair"><label class="field">Gap (min)<input type="number" id="ed-gap" min="0" max="240" value="${s.gap}"></label><label class="field">Gap ± (σ, min)<input type="number" id="ed-gaps" min="0" max="120" value="${s.gapSigma}"></label></div>
+     <div class="pair"><label class="field">Days without it: at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">± (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
+   :`<label class="field">At<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label>`}
+  <label class="field">How long it takes<select id="ed-dtype">${opt('lognormal','Usually runs long (skewed)',d.type)}${opt('normal','Could go either way',d.type)}${opt('fixed','Exactly as planned',d.type)}</select></label>
+  ${d.type==='lognormal'?`<div class="pair"><label class="field">Typical (min)<input type="number" id="ed-med" min="5" max="600" value="${d.median}"></label><label class="field">Overrun tail<span class="range-row"><input type="range" id="ed-spread" min="0" max="0.8" step="0.05" value="${d.spread}"><span class="num" id="ed-spread-v">${(+d.spread).toFixed(2)}</span></span></label></div>`
+   :d.type==='normal'?`<div class="pair"><label class="field">Typical (min)<input type="number" id="ed-med" min="5" max="600" value="${d.median}"></label><label class="field">± (σ, min)<input type="number" id="ed-sd" min="0" max="240" value="${d.sd}"></label></div>`
+   :`<label class="field">Minutes<input type="number" id="ed-med" min="5" max="600" value="${d.median}"></label>`}
+  <label class="field"><span>Chance it happens <b class="num" id="ed-exists-v">${pct(ev.exists)}</b></span><input type="range" id="ed-exists" min="0.05" max="1" step="0.05" value="${ev.exists}"><span>Below 100% it becomes a Schrödinger block: free and busy at once until you click it open.</span></label>
+  <label class="check"><input type="checkbox" id="ed-fr"${f?' checked':''}>Meeting a friend there</label>
+  ${f?`<div class="sub"><div class="pair"><label class="field">Friend arrives<input type="time" id="ed-fmu" value="${fmt(f.mu)}"></label><label class="field">± (σ, min)<input type="number" id="ed-fsg" min="0" max="120" value="${f.sigma}"></label></div><label class="field">Friend stays (min)<input type="number" id="ed-fmd" min="5" max="600" value="${f.median}"></label></div>`:''}
+  <div class="field">Color<div class="colors">${k.c.map((c,i)=>`<button type="button" data-color="${i}" aria-label="Color ${i+1}" aria-pressed="${i===ev.color}" style="background:${c}"></button>`).join('')}</div></div>
+  <div class="ed-stats" id="ed-stats">${statsHTML(ev)}</div>
+  <div class="ed-actions"><button class="btn small danger" id="ed-del" type="button">Delete</button><span style="display:flex;gap:6px"><button class="btn small" id="ed-invite" type="button">Copy invite link</button><button class="btn small" id="ed-done" type="button">Done</button></span></div>
+  <div id="ed-linkbox" hidden><p class="hint" id="ed-linkmsg"></p><input class="linkout" id="ed-link" readonly></div></div>`;
+}
+function renderList(){const k=tok();
+  $('#evlist').innerHTML=events.map(ev=>`<button class="ev-row" data-id="${ev.id}" aria-expanded="${ev.id===openId}">${rowInner(ev,k)}</button>${ev.id===openId?editorHTML(ev):''}`).join('')}
+const num=(id,fb)=>{const el=byEl(id);if(!el)return fb;const v=parseFloat(el.value);return isFinite(v)?v:fb};
+const tim=(id,fb)=>{const el=byEl(id);if(!el)return fb;const v=tmin(el.value);return v==null?fb:v};
+function readEditor(ev){
+  ev.name=$('#ed-name').value.trim()||'Untitled';
+  ev.days=DAYS.map((_,i)=>byEl('ed-day-'+i).checked?i:-1).filter(i=>i>=0);
+  const s=ev.start,d=ev.dur;
+  s.mu=tim('ed-mu',s.mu);s.sigma=Math.max(0,num('ed-sigma',s.sigma));s.lo=tim('ed-lo',s.lo);s.hi=tim('ed-hi',s.hi);
+  if(byEl('ed-after'))s.after=byEl('ed-after').value;s.gap=Math.max(0,num('ed-gap',s.gap));s.gapSigma=Math.max(0,num('ed-gaps',s.gapSigma));
+  d.median=Math.max(1,num('ed-med',d.median));d.spread=Math.max(0,num('ed-spread',d.spread));d.sd=Math.max(0,num('ed-sd',d.sd));
+  ev.exists=Math.min(1,Math.max(0.05,num('ed-exists',ev.exists)));
+  if(ev.friend){ev.friend.mu=tim('ed-fmu',ev.friend.mu);ev.friend.sigma=Math.max(0,num('ed-fsg',ev.friend.sigma));ev.friend.median=Math.max(5,num('ed-fmd',ev.friend.median))}
+}
+let pending=0;
+function refreshAll(){
+  simulateAll();
+  if(observed&&!flip&&!flipSummary)observe();
+  draw();renderRisks();renderDayEnds();renderPlanner();renderBets();save();
+  const ev=byId(openId);if(ev){const row=document.querySelector(`.ev-row[data-id="${ev.id}"]`);if(row)row.innerHTML=rowInner(ev,tok());const st=$('#ed-stats');if(st)st.innerHTML=statsHTML(ev)}
+}
+const scheduleRefresh=()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(refreshAll)};
+function stopFlipIfAny(){if(flip){clearInterval(flip.timer);flip=null;$('#flip').textContent='Play 100 universes'}flipSummary=null}
+$('#evlist').addEventListener('click',e=>{
+  const row=e.target.closest('.ev-row');if(row){openId=openId===row.dataset.id?null:row.dataset.id;renderList();return}
+  const ev=byId(openId);if(!ev)return;
+  const cb=e.target.closest('[data-color]');if(cb){ev.color=+cb.dataset.color;renderList();refreshAll();return}
+  if(e.target.id==='ed-done'){openId=null;renderList();return}
+  if(e.target.id==='ed-invite'){copyInvite(ev);return}
+  if(e.target.id==='ed-del'){
+    for(const x of events)if(x.start.type==='after'&&x.start.after===ev.id){x.start.type='normal'}
+    events=events.filter(x=>x!==ev);for(const k of Object.keys(boxState))if(k.startsWith(ev.id+'|'))delete boxState[k];
+    openId=null;stopFlipIfAny();renderList();refreshAll()}
+});
+$('#evlist').addEventListener('input',e=>{const ev=byId(openId);if(!ev||!e.target.closest('#editor'))return;
+  if(['ed-stype','ed-dtype','ed-fr','ed-link'].includes(e.target.id))return;
+  if(e.target.id==='ed-spread')$('#ed-spread-v').textContent=(+e.target.value).toFixed(2);
+  if(e.target.id==='ed-exists')$('#ed-exists-v').textContent=pct(+e.target.value);
+  stopFlipIfAny();readEditor(ev);scheduleRefresh()});
+$('#evlist').addEventListener('change',e=>{const ev=byId(openId);if(!ev)return;const id=e.target.id;
+  if(id==='ed-stype'||id==='ed-dtype'||id==='ed-fr'){
+    readEditor(ev);
+    if(id==='ed-stype'){ev.start.type=e.target.value;if(ev.start.type==='after'&&!events.some(x=>x.id===ev.start.after&&x!==ev&&!dependsOn(x,ev))){const p=events.find(x=>x.id!==ev.id&&!dependsOn(x,ev));ev.start.after=p?p.id:null}}
+    else if(id==='ed-dtype')ev.dur.type=e.target.value;
+    else ev.friend=e.target.checked?{mu:plannedStart(ev)+10,sigma:15,median:ev.dur.median,spread:0.25}:null;
+    renderList();refreshAll();const el=byEl(id);if(el)el.focus()}});
+$('#add').addEventListener('click',()=>{
+  const used=new Set(events.map(e=>e.color));const color=[0,1,2,3,4,5,6,7].find(c=>!used.has(c))??events.length%8;
+  const ev=mk('e'+Date.now().toString(36),'New event',color,[(new Date().getDay()+6)%7],{mu:900,sigma:10},{median:60,spread:0.3});
+  events.push(ev);openId=ev.id;stopFlipIfAny();renderList();refreshAll();populateSelects();
+  const n=$('#ed-name');if(n){n.focus();n.select()}});
+$('#reset').addEventListener('click',()=>{events=SAMPLE();openId=null;boxState={};stopFlipIfAny();renderList();refreshAll();populateSelects()});
+$('#blank').addEventListener('click',()=>{events=[];openId=null;boxState={};stopFlipIfAny();renderList();refreshAll();populateSelects();renderPlanner();renderBets();$('#add').focus()});
+
+/* ---------- invites ---------- */
+const b64e=s=>btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const b64d=s=>decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))));
+function copyInvite(ev){
+  const f=firstStats(ev);if(!f){$('#ed-linkbox').hidden=false;$('#ed-linkmsg').textContent='Pick at least one day first.';return}
+  const s=f.s,payload={v:1,n:ev.name,d:ev.days,mu:Math.round(s.s50),sg:Math.max(1,Math.round((s.s95-s.s05)/3.29)),md:Math.round(s.e50-s.s50),sp:0.25,c:ev.color};
+  const base=/github\.io$/.test(location.hostname)?location.origin+location.pathname:PUBLIC_URL;
+  const link=base+'#invite-'+b64e(JSON.stringify(payload));
+  const box=$('#ed-linkbox'),inp=$('#ed-link'),msg=$('#ed-linkmsg');box.hidden=false;inp.value=link;
+  const fallback=()=>{msg.textContent='Copy this link and send it. Whoever opens it gets the event with your arrival odds.';inp.focus();inp.select()};
+  try{navigator.clipboard.writeText(link).then(()=>{msg.textContent='Invite link copied. Whoever opens it gets the event with your arrival odds.'},fallback)}catch(e){fallback()}
+}
+function readInvite(){
+  const h=location.hash;if(!h.startsWith('#invite-'))return;
+  let p;try{p=JSON.parse(b64d(h.slice(8)))}catch(e){return}
+  if(!p||typeof p.n!=='string'||!Array.isArray(p.d))return;
+  const bar=$('#invite');bar.hidden=false;
+  bar.innerHTML=`<p>You're invited to <b>${esc(p.n)}</b> (${daysText(p.d)}). They usually arrive around <b class="num">${fmt(p.mu)} ± ${p.sg} min</b> and stay about <b class="num">${fmtDur(p.md)}</b>.</p><span style="display:flex;gap:8px"><button class="btn small" id="inv-no">Not now</button><button class="btn small primary" id="inv-yes">Add to my week</button></span>`;
+  const close=()=>{bar.hidden=true;try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}};
+  $('#inv-no').onclick=close;
+  $('#inv-yes').onclick=()=>{const ev=mk('i'+Date.now().toString(36),p.n,(p.c|0)%8,p.d.filter(x=>x>=0&&x<7),{mu:p.mu,sigma:15},{median:p.md||60,spread:0.3},{friend:{mu:p.mu,sigma:p.sg,median:p.md||60,spread:p.sp||0.25}});
+    events.push(ev);openId=ev.id;close();renderList();refreshAll();populateSelects()};
+}
+
+/* ---------- planner ---------- */
+const plc=$('#pl-cv'),pctx=plc.getContext('2d');
+function evDayOptions(selEv,selDay,evId){const ev=byId(evId);const days=ev?ev.days:[];
+  selDay.innerHTML=days.map(d=>`<option value="${d}">${DAYS[d]}</option>`).join('')}
+function populateSelects(){
+  for(const [se,sd,def] of [[$('#pl-ev'),$('#pl-day'),'climb'],[$('#bt-ev'),$('#bt-day'),'oneone']]){
+    const cur=se.value||def;se.innerHTML=events.filter(e=>e.days.length).map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    if(byId(cur)&&byId(cur).days.length)se.value=cur;const dcur=sd.value;evDayOptions(se,sd,se.value);if([...sd.options].some(o=>o.value===dcur))sd.value=dcur}
+}
+function plState(){const ev=byId($('#pl-ev').value),d=+$('#pl-day').value;if(!ev||!sims[d]||!sims[d].st[ev.id])return null;return{ev,d,st:sims[d].st[ev.id]}}
+function defaultTarget(kind,ev,d,st){
+  if(!st.n)return plannedStart(ev);
+  if(kind==='arrive')return ev.start.type==='normal'||ev.start.type==='fixed'?ev.start.mu:Math.round(st.s50/5)*5;
+  const next=sims[d].order.filter(x=>x!==ev&&sims[d].st[x.id].n&&sims[d].st[x.id].s50>st.s50).sort((a,b)=>sims[d].st[a.id].s50-sims[d].st[b.id].s50)[0];
+  return next?Math.round(sims[d].st[next.id].s50/5)*5:Math.round((st.e50+15)/5)*5}
+function resetPlannerTarget(){const S=plState();if(!S)return;$('#pl-t').value=fmt(defaultTarget($('#pl-kind').value,S.ev,S.d,S.st));$('#pl-shift').value=0}
+function shiftLabel(ev,dl){const s=ev.start;
+  if(s.type==='after'){const p=byId(s.after);return `leave a ${Math.max(0,Math.round(s.gap+dl))} min gap after ${esc(p?p.name:'it')}`}
+  if(s.type==='uniform')return `aim for ${fmt(s.lo+dl)}–${fmt(s.hi+dl)}`;return `plan to start at ${fmt(s.mu+dl)}`}
+function renderPlanner(){
+  const S=plState(),out=$('#pl-answer');if(!S){$('#pl-p').textContent='–';$('#pl-desc').textContent='Add an event with at least one day.';out.textContent='';return}
+  const{ev,st}=S,kind=$('#pl-kind').value,T=tmin($('#pl-t').value)??0,dl=+$('#pl-shift').value,conf=+$('#pl-conf').value/100;
+  const arr=kind==='arrive'?st.sS:st.sE;
+  $('#pl-shift-v').textContent=signed(dl);$('#pl-conf-v').textContent=Math.round(conf*100)+'%';
+  if(!arr.length){$('#pl-p').textContent='–';$('#pl-desc').textContent='This box is open and empty: the event is not happening.';out.textContent='';drawPlanner(null);return}
+  const p=ecdf(arr,T-dl);
+  $('#pl-p').textContent=pct(p);$('#pl-desc').innerHTML=`chance you ${kind==='arrive'?'arrive':'finish'} by ${fmt(T)} if you ${shiftLabel(ev,dl)}${ev.exists<1&&boxState[ev.id+'|'+S.d]===undefined?' (if it happens)':''}`;
+  const need=T-quant(arr,conf);
+  out.innerHTML=`To be <b>${Math.round(conf*100)}%</b> sure: ${shiftLabel(ev,need)} <span class="num" style="color:var(--muted)">(${signed(need)})</span>.`;
+  drawPlanner({arr,T,dl,conf});
+}
+function drawPlanner(o){
+  const dpr=window.devicePixelRatio||1,W=plc.clientWidth||300,H=120;plc.width=W*dpr;plc.height=H*dpr;pctx.setTransform(dpr,0,0,dpr,0,0);
+  const k=tok();pctx.clearRect(0,0,W,H);if(!o)return;
+  const L=30,R=W-8,Tp=8,B=H-20,X=v=>L+(v+60)/120*(R-L),Y=p=>B-p*(B-Tp);
+  pctx.font='10px "IBM Plex Mono", ui-monospace, monospace';pctx.fillStyle=k.muted;pctx.textBaseline='middle';pctx.textAlign='right';
+  for(const p of [0,.5,1]){pctx.strokeStyle=k.grid;pctx.beginPath();pctx.moveTo(L,Y(p)+.5);pctx.lineTo(R,Y(p)+.5);pctx.stroke();pctx.fillText(Math.round(p*100)+'%',L-4,Y(p))}
+  pctx.textAlign='center';pctx.textBaseline='top';for(const v of [-60,-30,0,30,60])pctx.fillText(v===0?'plan':(v>0?'+':'−')+Math.abs(v)+'m',X(v),B+5);
+  pctx.setLineDash([3,3]);pctx.strokeStyle=k.warn;pctx.beginPath();pctx.moveTo(L,Y(o.conf)+.5);pctx.lineTo(R,Y(o.conf)+.5);pctx.stroke();pctx.setLineDash([]);
+  pctx.beginPath();for(let v=-60;v<=60;v++){const y=Y(ecdf(o.arr,o.T-v));v===-60?pctx.moveTo(X(v),y):pctx.lineTo(X(v),y)}
+  pctx.lineTo(X(60),B);pctx.lineTo(X(-60),B);pctx.closePath();pctx.fillStyle=rgba(k.accent,0.12);pctx.fill();
+  pctx.beginPath();for(let v=-60;v<=60;v++){const y=Y(ecdf(o.arr,o.T-v));v===-60?pctx.moveTo(X(v),y):pctx.lineTo(X(v),y)}pctx.strokeStyle=k.accent;pctx.lineWidth=2;pctx.stroke();pctx.lineWidth=1;
+  const py=Y(ecdf(o.arr,o.T-o.dl));pctx.fillStyle=k.accent;pctx.beginPath();pctx.arc(X(o.dl),py,4.5,0,7);pctx.fill();pctx.strokeStyle=k.surface;pctx.lineWidth=1.5;pctx.stroke();pctx.lineWidth=1;
+}
+$('#pl-ev').addEventListener('change',()=>{evDayOptions(null,$('#pl-day'),$('#pl-ev').value);resetPlannerTarget();renderPlanner()});
+$('#pl-day').addEventListener('change',()=>{resetPlannerTarget();renderPlanner()});
+$('#pl-kind').addEventListener('change',()=>{resetPlannerTarget();renderPlanner()});
+for(const id of ['pl-t','pl-shift','pl-conf'])byEl(id).addEventListener('input',renderPlanner);
+$('#pl-apply').addEventListener('click',()=>{const S=plState();const dl=+$('#pl-shift').value;if(!S||!dl)return;const s=S.ev.start;
+  if(s.type==='after')s.gap=Math.max(0,s.gap+dl);else if(s.type==='uniform'){s.lo+=dl;s.hi+=dl}else s.mu+=dl;
+  $('#pl-shift').value=0;stopFlipIfAny();renderList();refreshAll()});
+
+/* ---------- bets ---------- */
+function betModelP(evId,d,kind,T){const st=sims[d]&&sims[d].st[evId];if(!st||!st.n)return NaN;return ecdf(kind==='arrive'?st.sS:st.sE,T)}
+function resetBetTarget(){const ev=byId($('#bt-ev').value),d=+$('#bt-day').value,st=ev&&sims[d]&&sims[d].st[ev.id];if(!st||!st.n)return;
+  $('#bt-t').value=fmt(Math.round(($('#bt-kind').value==='arrive'?st.s50:st.e50)/5)*5)}
+function renderBets(){
+  const ev=byId($('#bt-ev').value),d=+$('#bt-day').value,kind=$('#bt-kind').value,T=tmin($('#bt-t').value),you=+$('#bt-you').value/100;
+  $('#bt-you-v').textContent=Math.round(you*100)+'%';
+  const p=ev&&T!=null?betModelP(ev.id,d,kind,T):NaN;
+  $('#bt-quote').innerHTML=isFinite(p)?`The model says <b class="num">${pct(p)}</b>. Fair payout if it happens: <b class="num">${p>0?(1/Math.max(p,0.01)).toFixed(2):'∞'}×</b>. ${Math.abs(you-p)>0.25?(you>p?'You are much more optimistic than the model.':'You are much more pessimistic than the model.'):'You and the model roughly agree.'}`:'Pick an event and a time.';
+  const done=bets.filter(b=>b.outcome!=null);
+  if(done.length){const br=k=>done.reduce((a,b)=>a+(b[k]-(b.outcome?1:0))**2,0)/done.length,by=br('you'),bm=br('model');
+    $('#bt-score').innerHTML=`<div class="score"><span>Brier score over <b class="num">${done.length}</b> settled bet${done.length>1?'s':''} (lower is better)</span><span>You <b class="num">${by.toFixed(3)}</b> · Model <b class="num">${bm.toFixed(3)}</b></span><span>${Math.abs(by-bm)<0.01?'Dead heat.':by<bm?'You know yourself better than the model does.':'The model knows you better than you do.'}</span></div>`}
+  else $('#bt-score').innerHTML='';
+  $('#bt-list').innerHTML=bets.slice().reverse().map(b=>`<div class="bet"><div class="bet-top"><span>${DAYS[b.d]} · <b>${esc(b.name)}</b> ${b.kind==='arrive'?'starts':'finishes'} by <span class="num">${fmt(b.t)}</span></span>${b.outcome==null?'':`<span class="${b.outcome?'res-y':'res-n'}">${b.outcome?'happened':'did not'}</span>`}</div>
+    <span class="hint">You <span class="num">${pct(b.you)}</span> · model <span class="num">${pct(b.model)}</span></span>
+    <div class="bet-btns">${b.outcome==null?`<button class="btn small" data-bet="${b.id}" data-out="1">It happened</button><button class="btn small" data-bet="${b.id}" data-out="0">It didn't</button>`:''}<button class="btn small" data-bet="${b.id}" data-out="x">Remove</button></div></div>`).join('');
+}
+$('#bt-ev').addEventListener('change',()=>{evDayOptions(null,$('#bt-day'),$('#bt-ev').value);resetBetTarget();renderBets()});
+$('#bt-day').addEventListener('change',()=>{resetBetTarget();renderBets()});
+$('#bt-kind').addEventListener('change',()=>{resetBetTarget();renderBets()});
+for(const id of ['bt-t','bt-you'])byEl(id).addEventListener('input',renderBets);
+$('#bt-place').addEventListener('click',()=>{const ev=byId($('#bt-ev').value),d=+$('#bt-day').value,kind=$('#bt-kind').value,T=tmin($('#bt-t').value);
+  const p=ev&&T!=null?betModelP(ev.id,d,kind,T):NaN;if(!isFinite(p))return;
+  bets.push({id:Date.now().toString(36),name:ev.name,d,kind,t:T,you:+$('#bt-you').value/100,model:p,outcome:null});ls.set(K.bets,bets);renderBets()});
+$('#bt-list').addEventListener('click',e=>{const b=e.target.closest('[data-bet]');if(!b)return;const bet=bets.find(x=>x.id===b.dataset.bet);if(!bet)return;
+  if(b.dataset.out==='x')bets=bets.filter(x=>x!==bet);else bet.outcome=b.dataset.out==='1';ls.set(K.bets,bets);renderBets()});
+
+/* ---------- observe + flipbook ---------- */
+function setUniverseUI(){$('#observe').textContent=observed?'Back to probabilities':'Observe the week';$('#resample').hidden=!observed||!!flip;$('#universe').hidden=!observed;$('#universe').textContent=`universe #${universe}`}
+function setObserved(v){stopFlipIfAny();observed=v;if(v)observe();setUniverseUI();draw();renderRisks()}
+$('#observe').addEventListener('click',()=>setObserved(!observed));
+$('#resample').addEventListener('click',()=>setObserved(true));
+$('#flip').addEventListener('click',()=>{
+  if(flip){const t=flip.tally;clearInterval(flip.timer);flip=null;$('#flip').textContent='Play 100 universes';flipSummary=t.n?finishTally(t):null;setUniverseUI();renderRisks();return}
+  flipSummary=null;observed=true;
+  const tally={n:0,coll:0,pairs:{},latest:-Infinity,latestDay:0,met:0,meetTries:0};
+  flip={i:0,tally,timer:setInterval(()=>{
+    observe();flip.i++;tally.n++;const items=collisionsIn();if(items.length)tally.coll++;
+    const seen=new Set();for(const it of items){const key=it.A.id+'|'+it.B.id;if(seen.has(key))continue;seen.add(key);(tally.pairs[key]=tally.pairs[key]||{A:it.A,B:it.B,n:0}).n++}
+    for(let d=0;d<7;d++)for(const e of sims[d].order){const r=rv(e.id,d);if(!r||!r.h)continue;if(r.e>tally.latest){tally.latest=r.e;tally.latestDay=d}
+      if(r.fs!=null){tally.meetTries++;if(Math.min(r.e,r.fe)-Math.max(r.s,r.fs)>0)tally.met++}}
+    setUniverseUI();draw();renderRisks();
+    if(flip.i>=100){clearInterval(flip.timer);flip=null;$('#flip').textContent='Play 100 universes';flipSummary=finishTally(tally);setUniverseUI();renderRisks()}
+  },90)};
+  $('#flip').textContent='Stop';setUniverseUI();
+});
+function finishTally(t){return{coll:Math.round(t.coll*100/t.n),pairs:Object.fromEntries(Object.entries(t.pairs).map(([k,v])=>[k,{...v,n:Math.round(v.n*100/t.n)}])),latest:t.latest,latestDay:t.latestDay,met:t.meetTries?t.met:null,meetTries:t.meetTries}}
+
+/* ---------- boot ---------- */
+renderConds();simulateAll();populateSelects();resetPlannerTarget();resetBetTarget();
+draw();renderRisks();renderDayEnds();renderPlanner();renderBets();renderList();readInvite();
+let rz;new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(()=>{draw();renderPlanner()})}).observe(cal);
+if(document.fonts)document.fonts.ready.then(()=>{draw();renderPlanner()});
+const rethemed=()=>{draw();renderRisks();renderList();renderConds();renderPlanner()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rethemed);
+new MutationObserver(rethemed).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+setInterval(()=>{if(!flip)draw()},60000);
+</script>
+
+</body>
+</html>
