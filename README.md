@@ -1,4 +1,4 @@
-# Stochastic Calendar
+# Probabilistic Calendar
 
 A week calendar where every event is a probability distribution instead of a fixed block.
 
