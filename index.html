@@ -120,6 +120,14 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
 .days span{font-size:12px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;color:var(--muted);cursor:pointer;background:var(--surface)}
 .days input:checked+span{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 .days input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg label{display:inline-flex}
+.seg input{position:absolute;opacity:0;width:1px;height:1px}
+.seg span{font-size:12.5px;padding:5px 9px;border:1px solid var(--line);border-radius:6px;color:var(--ink);cursor:pointer;background:var(--surface)}
+.seg input:checked+span{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.prev{display:grid;gap:2px}
+.prev canvas{width:100%;height:64px;display:block;background:var(--surface);border:1px solid var(--line);border-radius:6px}
 .colors{display:flex;gap:6px;flex-wrap:wrap}
 .colors button{width:22px;height:22px;border-radius:6px;border:2px solid transparent;padding:0}
 .colors button[aria-pressed="true"]{border-color:var(--ink)}
@@ -294,7 +302,8 @@ const signed=m=>m===0?'0 min':(m>0?'+':'−')+Math.abs(Math.round(m))+' min';
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function daysText(e){if(e.date)return 'Once · '+shortDay(e.date);const s=[...e.days].sort((a,b)=>a-b);const j=s.join();if(j==='0,1,2,3,4,5,6')return 'Daily';if(j==='0,1,2,3,4')return 'Weekdays';if(j==='5,6')return 'Weekends';if(!s.length)return 'No days';return s.map(i=>DAYS[i]).join(' ')}
 const byId=id=>events.find(e=>e.id===id);
-function startText(ev){const s=ev.start;if(s.type==='after'){const p=byId(s.after);return `after ${p?p.name:'?'} +${s.gap}m`}if(s.type==='uniform')return `${fmt(s.lo)}–${fmt(s.hi)}`;if(s.type==='fixed')return `${fmt(s.mu)} sharp`;return `${fmt(s.mu)} ± ${s.sigma}m`}
+function startText(ev){const s=ev.start;if(s.type==='after'){const p=byId(s.after);return `after ${p?p.name:'?'} +${s.gap}m`}if(s.type==='uniform')return `${fmt(s.lo)}–${fmt(s.hi)}`;if(s.type==='fixed')return `${fmt(s.mu)} sharp`;if(s.type==='skewed')return `${fmt(s.mu)} ± ${s.sigma}m, ${skewWord(s.skew)}`;return `${fmt(s.mu)} ± ${s.sigma}m`}
+const skewWord=k=>Math.abs(k)<0.05?'symmetric':k>0?(k>0.6?'often late':'tends late'):(k<-0.6?'often early':'tends early');
 function durText(ev){const d=ev.dur;if(d.type==='lognormal')return `~${fmtDur(d.median)}, runs long`;if(d.type==='normal')return `${fmtDur(d.median)} ± ${d.sd}m`;return fmtDur(d.median)}
 
 /* ---------- conditions ---------- */
@@ -310,13 +319,13 @@ function condFor(dw){const c={shift:0,noise:1,dur:1,spread:1};for(const k of CON
 
 /* ---------- data ---------- */
 function norm(e){
-  e.start=Object.assign({type:'normal',mu:600,sigma:10,lo:600,hi:660,after:null,gap:15,gapSigma:10},e.start||{});
+  e.start=Object.assign({type:'normal',mu:600,sigma:10,lo:600,hi:660,skew:0.6,after:null,gap:15,gapSigma:10,gapSkew:0},e.start||{});
   e.dur=Object.assign({type:'lognormal',median:60,spread:0.25,sd:10},e.dur||{});
   if(e.exists==null)e.exists=1;if(e.friend===undefined)e.friend=null;e.days=e.days||[];if(e.color==null)e.color=0;
   if(e.date===undefined)e.date=null;e.skip=e.skip||[];if(e.private==null)e.private=false;if(e.learn==null)e.learn=true;return e}
 const mk=(id,name,color,days,start,dur,extra)=>norm(Object.assign({id,name,color,days,start,dur},extra||{}));
 const SAMPLE=()=>[
-  mk('wake','Wake up + coffee',6,[0,1,2,3,4,5,6],{mu:570,sigma:20},{median:35,spread:0.3}),
+  mk('wake','Wake up + coffee',6,[0,1,2,3,4,5,6],{type:'skewed',mu:565,sigma:25,skew:0.8},{median:35,spread:0.3}),
   mk('deep','Deep work',3,[0,2,3],{type:'after',after:'wake',gap:25,gapSigma:15,mu:630,sigma:20},{median:120,spread:0.35}),
   mk('coffee','Standup',1,[1,4],{mu:690,sigma:3},{median:45,spread:0.2}),
   mk('lunch','Lunch',7,[0,1,2,3,4,5,6],{type:'uniform',lo:720,hi:765},{median:35,spread:0.25}),
@@ -324,7 +333,7 @@ const SAMPLE=()=>[
   mk('team','Team meeting',4,[4],{mu:840,sigma:3},{median:75,spread:0.25}),
   mk('cat',"Schrödinger's meeting",5,[2],{type:'uniform',lo:900,hi:960},{median:50,spread:0.3},{exists:0.5}),
   mk('climb','Climbing gym',0,[0,2,4,5],{mu:1110,sigma:15},{type:'normal',median:100,sd:20},{friend:{mu:1120,sigma:20,median:90,spread:0.25}}),
-  mk('dinner','Dinner',5,[0,1,2,3,4,5,6],{type:'after',after:'climb',gap:20,gapSigma:10,mu:1215,sigma:20},{median:45,spread:0.3}),
+  mk('dinner','Dinner',5,[0,1,2,3,4,5,6],{type:'after',after:'climb',gap:20,gapSigma:12,gapSkew:0.6,mu:1215,sigma:20},{median:45,spread:0.3}),
 ];
 let events=[],baseline='[]',repoCal=null,source='demo',embedded=false;
 let logs=ls.get(K.logs)||{};
@@ -361,8 +370,15 @@ function eff(e){const L=learned[e.id];if(!L||e.learn===false)return e;const x={.
   if(L.nD)x.dur={...x.dur,type:'lognormal',median:L.median,spread:L.spread};return x}
 
 /* ---------- simulation ---------- */
+/* skew-normal noise with its median moved to 0; skew in [-1,1] maps to shape alpha in [-6,6] */
+const skewMed={};
+function skewRaw(alpha,r){const d=alpha/Math.sqrt(1+alpha*alpha);return d*Math.abs(gauss(r))+Math.sqrt(1-d*d)*gauss(r)}
+function skewNoise(skew,r){const a=Math.max(-1,Math.min(1,skew||0))*6;if(Math.abs(a)<1e-6)return gauss(r);const key=a.toFixed(2);
+  if(skewMed[key]==null){const rr=mulberry32(12345),xs=new Float64Array(4001);for(let i=0;i<xs.length;i++)xs[i]=skewRaw(a,rr);xs.sort();skewMed[key]=xs[2000]}
+  return skewRaw(a,r)-skewMed[key]}
 function sOwn(st,r,c){
   if(st.type==='fixed')return st.mu+c.shift;
+  if(st.type==='skewed')return st.mu+c.shift+st.sigma*c.noise*skewNoise(st.skew,r);
   if(st.type==='uniform'){const hi=Math.max(st.hi,st.lo),mid=(st.lo+hi)/2;return mid+(r()-0.5)*(hi-st.lo)*c.noise+c.shift}
   return st.mu+c.shift+st.sigma*c.noise*gauss(r)}
 function sDur(du,r,c){
@@ -387,7 +403,7 @@ function runDay(key,r,n){
     const logged=lg&&(lg.a!=null||lg.d!=null);
     const h=logged?true:box!==undefined?box:(e.exists>=1||u<e.exists);
     const p=parentOf(e);let s;
-    if(p&&res[p].H[i])s=res[p].E[i]+Math.max(0,x.start.gap+x.start.gapSigma*c.noise*gauss(r));
+    if(p&&res[p].H[i])s=res[p].E[i]+Math.max(0,x.start.gap+x.start.gapSigma*c.noise*skewNoise(x.start.gapSkew,r));
     else if(x.start.type==='after')s=sOwn({type:'normal',mu:x.start.mu,sigma:x.start.sigma},r,c);
     else s=sOwn(x.start,r,c);
     if(lg&&lg.a!=null)s=lg.a;
@@ -626,7 +642,7 @@ function renderRisks(){
 function rowInner(ev,k){const L=learned[ev.id];return `<i class="sw" style="background:${k.c[ev.color%8]}"></i><span class="ev-name">${esc(ev.name)}${ev.private?' <span class="hint">(private)</span>':''}</span><span class="ev-sum">${daysText(ev)} · ${esc(startText(ev))} · ${durText(ev)}${ev.exists<1?` · ${pct(ev.exists)} real`:''}${ev.friend?' · with friend':''}${L&&ev.learn?` · learned from ${Math.max(L.nA,L.nD)}`:''}</span>`}
 function firstStats(ev){for(let ci=0;ci<7;ci++){const s=sims[ci]&&sims[ci].st[ev.id];if(s&&s.n)return{s,ci}}return null}
 function statsHTML(ev){const f=firstStats(ev);if(!f)return '<span>Not on the calendar this week.</span>';const s=f.s;
-  return `<span style="color:var(--muted)">This week, ${shortDay(cols[f.ci])}</span><span>Start: 90% of the time between <b class="num">${fmt(s.s05)}</b> and <b class="num">${fmt(s.s95)}</b></span><span>Done by <b class="num">${fmt(s.e90)}</b> 9 times out of 10 (median <span class="num">${fmt(s.e50)}</span>)</span><span>Runs 15+ min over: <b class="num">${pct(s.pOver)}</b>${ev.start.type==='normal'?` · 5+ min late: <b class="num">${pct(s.pLate)}</b>`:''}</span>${ev.friend?`<span>Meet-up odds: <b class="num">${pct(s.pMeet)}</b> you overlap, about <b class="num">${fmtDur(s.meanOv)}</b> together on average</span>`:''}`}
+  return `<span style="color:var(--muted)">This week, ${shortDay(cols[f.ci])}</span><span>Start: 90% of the time between <b class="num">${fmt(s.s05)}</b> and <b class="num">${fmt(s.s95)}</b></span><span>Done by <b class="num">${fmt(s.e90)}</b> 9 times out of 10 (median <span class="num">${fmt(s.e50)}</span>)</span><span>Runs 15+ min over: <b class="num">${pct(s.pOver)}</b>${['normal','skewed','fixed'].includes(ev.start.type)?` · 5+ min late: <b class="num">${pct(s.pLate)}</b>`:''}</span>${ev.friend?`<span>Meet-up odds: <b class="num">${pct(s.pMeet)}</b> you overlap, about <b class="num">${fmtDur(s.meanOv)}</b> together on average</span>`:''}`}
 function learnHTML(ev){const L=learned[ev.id];if(!L)return `<span class="hint">No logs yet. Log this event a few times and it will learn your real timing.</span>`;
   const parts=[];
   if(L.nA){if(ev.start.type==='after')parts.push(`gap after ${esc((byId(ev.start.after)||{}).name||'it')}: <b class="num">${L.gap} ± ${L.gapSigma} min</b> (planned ${ev.start.gap} ± ${ev.start.gapSigma}) from ${L.nA} log${L.nA>1?'s':''}`);
@@ -643,19 +659,24 @@ function editorHTML(ev){
   ${ev.date?`<label class="field">Date<input type="date" id="ed-date" value="${ev.date}"></label>`
    :`<div class="field">Days<div class="days">${DAYS.map((n,i)=>`<label><input type="checkbox" id="ed-day-${i}"${ev.days.includes(i)?' checked':''}><span>${n}</span></label>`).join('')}</div></div>
      ${ev.skip.length?`<div class="field">Skipped dates<span class="btnrow">${ev.skip.slice().sort().map(x=>`<button class="btn small" type="button" data-unskip="${x}" title="Put it back">${shortDay(x)} ×</button>`).join('')}</span></div>`:''}`}
-  <label class="field">When it starts<select id="ed-stype">${opt('normal','Bell curve around a time',s.type)}${opt('uniform','Any time in a window',s.type)}${opt('fixed','Exactly on time',s.type)}${parents.length?opt('after','Right after another event',s.type):''}</select></label>
+  <div class="field">Arrival shape<div class="seg" role="radiogroup" aria-label="Arrival shape">${[['normal','Gaussian'],['skewed','Skewed'],['uniform','Uniform'],['fixed','Exact'],...(parents.length?[['after','After another event']]:[])].map(([v,l])=>`<label><input type="radio" name="ed-stype" id="ed-st-${v}" value="${v}"${s.type===v?' checked':''}><span>${l}</span></label>`).join('')}</div>
+    <span>${{normal:'A bell curve: as likely early as late.',skewed:'Lopsided: usually near the typical time, with a long tail on one side.',uniform:'Equally likely any time in a window.',fixed:'Always exactly on time.',after:'Starts when another event ends, plus a gap.'}[s.type]}</span></div>
   ${s.type==='normal'?`<div class="pair"><label class="field">Centered at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">Spread (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
+   :s.type==='skewed'?`<div class="pair"><label class="field">Typical arrival<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">Spread (min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>
+     <label class="field"><span>Skew <b class="num" id="ed-skew-v">${skewWord(s.skew)}</b></span><span class="range-row"><span>early</span><input type="range" id="ed-skew" min="-1" max="1" step="0.05" value="${s.skew}"><span>late</span></span></label>`
    :s.type==='uniform'?`<div class="pair"><label class="field">Earliest<input type="time" id="ed-lo" value="${fmt(s.lo)}"></label><label class="field">Latest<input type="time" id="ed-hi" value="${fmt(s.hi)}"></label></div>`
    :s.type==='after'?`<label class="field">After<select id="ed-after">${parents.map(x=>opt(x.id,esc(x.name),s.after)).join('')}</select></label>
-     <div class="pair"><label class="field">Gap (min)<input type="number" id="ed-gap" min="0" max="240" value="${s.gap}"></label><label class="field">Gap ± (σ, min)<input type="number" id="ed-gaps" min="0" max="120" value="${s.gapSigma}"></label></div>
+     <div class="pair"><label class="field">Gap (min)<input type="number" id="ed-gap" min="0" max="240" value="${s.gap}"></label><label class="field">Gap spread (min)<input type="number" id="ed-gaps" min="0" max="120" value="${s.gapSigma}"></label></div>
+     <label class="field"><span>Gap skew <b class="num" id="ed-gskew-v">${skewWord(s.gapSkew)}</b></span><span class="range-row"><span>short</span><input type="range" id="ed-gskew" min="-1" max="1" step="0.05" value="${s.gapSkew}"><span>long</span></span></label>
      <div class="pair"><label class="field">Days without it: at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">± (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
    :`<label class="field">At<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label>`}
+  <div class="prev"><canvas id="ed-prev" aria-label="Preview of the arrival distribution"></canvas><span class="hint" id="ed-prev-cap"></span></div>
   <label class="field">How long it takes<select id="ed-dtype">${opt('lognormal','Usually runs long (skewed)',d.type)}${opt('normal','Could go either way',d.type)}${opt('fixed','Exactly as planned',d.type)}</select></label>
   ${d.type==='lognormal'?`<div class="pair"><label class="field">Typical (min)<input type="number" id="ed-med" min="5" max="600" value="${Math.round(d.median)}"></label><label class="field">Overrun tail<span class="range-row"><input type="range" id="ed-spread" min="0" max="0.8" step="0.05" value="${d.spread}"><span class="num" id="ed-spread-v">${(+d.spread).toFixed(2)}</span></span></label></div>`
    :d.type==='normal'?`<div class="pair"><label class="field">Typical (min)<input type="number" id="ed-med" min="5" max="600" value="${Math.round(d.median)}"></label><label class="field">± (σ, min)<input type="number" id="ed-sd" min="0" max="240" value="${d.sd}"></label></div>`
    :`<label class="field">Minutes<input type="number" id="ed-med" min="5" max="600" value="${Math.round(d.median)}"></label>`}
   <div class="learn" id="ed-learnbox">${learnHTML(ev)}</div>
-  <label class="field"><span>Chance it happens <b class="num" id="ed-exists-v">${pct(ev.exists)}</b></span><input type="range" id="ed-exists" min="0.05" max="1" step="0.05" value="${ev.exists}"><span>Below 100% it becomes a Schrödinger block: free and busy at once until you click it open.</span></label>
+  <label class="field"><span>Chance it happens <b class="num" id="ed-exists-v">${ev.exists>=1?'100%':pct(ev.exists)}</b></span><input type="range" id="ed-exists" min="0.05" max="1" step="0.05" value="${ev.exists}"><span>Below 100% it becomes a Schrödinger block: free and busy at once until you click it open.</span></label>
   <label class="check"><input type="checkbox" id="ed-fr"${f?' checked':''}>Meeting a friend there</label>
   ${f?`<div class="sub"><div class="pair"><label class="field">Friend arrives<input type="time" id="ed-fmu" value="${fmt(f.mu)}"></label><label class="field">± (σ, min)<input type="number" id="ed-fsg" min="0" max="120" value="${f.sigma}"></label></div><label class="field">Friend stays (min)<input type="number" id="ed-fmd" min="5" max="600" value="${f.median}"></label></div>`:''}
   <label class="check"><input type="checkbox" id="ed-priv"${ev.private?' checked':''}>Private: keep it in this browser, never in calendar.json</label>
@@ -664,8 +685,21 @@ function editorHTML(ev){
   <div class="ed-actions"><button class="btn small danger" id="ed-del" type="button">Delete</button><span style="display:flex;gap:6px"><button class="btn small" id="ed-invite" type="button">Copy invite link</button><button class="btn small" id="ed-done" type="button">Done</button></span></div>
   <div id="ed-linkbox" hidden><p class="hint" id="ed-linkmsg"></p><input class="linkout" id="ed-link" readonly></div></div>`;
 }
+function drawPreview(ev){
+  const cvp=byEl('ed-prev');if(!cvp)return;const cap=byEl('ed-prev-cap'),dpr=window.devicePixelRatio||1,W=cvp.clientWidth||300,H=64,g=cvp.getContext('2d');
+  cvp.width=W*dpr;cvp.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  const k=tok(),col=k.c[ev.color%8],st=ev.start,r=mulberry32(7),n=4000,xs=new Float64Array(n),c={shift:0,noise:1,dur:1,spread:1},isAfter=st.type==='after';
+  for(let i=0;i<n;i++)xs[i]=isAfter?Math.max(0,st.gap+st.gapSigma*skewNoise(st.gapSkew,r)):sOwn(st,r,c);
+  xs.sort();const q=p=>xs[Math.min(n-1,Math.floor(p*n))];let lo=q(.005),hi=q(.995);if(hi-lo<10){const m=(lo+hi)/2;lo=m-5;hi=m+5}
+  const pad2=(hi-lo)*0.08;lo-=pad2;hi+=pad2;const B=48,bins=new Float64Array(B);for(const x of xs){const b=Math.floor((x-lo)/(hi-lo)*B);if(b>=0&&b<B)bins[b]++}
+  const mx=Math.max(...bins),X=b=>6+b/B*(W-12),Y=v=>H-16-v/mx*(H-24);
+  g.beginPath();g.moveTo(X(0),H-16);for(let b=0;b<B;b++){g.lineTo(X(b),Y(bins[b]));g.lineTo(X(b+1),Y(bins[b]))}g.lineTo(X(B),H-16);g.closePath();g.fillStyle=rgba(col,0.35);g.fill();g.strokeStyle=col;g.lineWidth=1.5;g.stroke();
+  const med=q(.5),mxp=6+(med-lo)/(hi-lo)*(W-12);g.strokeStyle=k.ink;g.setLineDash([3,3]);g.beginPath();g.moveTo(mxp,6);g.lineTo(mxp,H-16);g.stroke();g.setLineDash([]);
+  g.font='10px "IBM Plex Mono", ui-monospace, monospace';g.fillStyle=k.muted;g.textBaseline='bottom';const lab=v=>isAfter?`+${Math.round(v)}m`:fmt(v);
+  g.textAlign='left';g.fillText(lab(q(.05)),4,H-2);g.textAlign='center';g.fillText(lab(med),Math.min(W-30,Math.max(30,mxp)),H-2);g.textAlign='right';g.fillText(lab(q(.95)),W-4,H-2);
+  if(cap)cap.textContent=isAfter?`Gap after ${(byId(st.after)||{}).name||'the other event'}: 90% between ${lab(q(.05))} and ${lab(q(.95))}, median ${lab(med)}.`:`Arrival: 90% between ${fmt(q(.05))} and ${fmt(q(.95))}, median ${fmt(med)} (dashed). Plan only; logs and conditions not applied.`}
 function renderList(){const k=tok();
-  $('#evlist').innerHTML=events.length?events.map(ev=>`<button class="ev-row" data-id="${ev.id}" aria-expanded="${ev.id===openId}">${rowInner(ev,k)}</button>${ev.id===openId?editorHTML(ev):''}`).join(''):'<p class="empty">No events yet. Add one, or import an .ics file from your calendar app.</p>'}
+  $('#evlist').innerHTML=events.length?events.map(ev=>`<button class="ev-row" data-id="${ev.id}" aria-expanded="${ev.id===openId}">${rowInner(ev,k)}</button>${ev.id===openId?editorHTML(ev):''}`).join(''):'<p class="empty">No events yet. Add one, or import an .ics file from your calendar app.</p>';const oe=byId(openId);if(oe)drawPreview(oe)}
 const num=(id,fb)=>{const el=byEl(id);if(!el)return fb;const v=parseFloat(el.value);return isFinite(v)?v:fb};
 const tim=(id,fb)=>{const el=byEl(id);if(!el)return fb;const v=tmin(el.value);return v==null?fb:v};
 function readEditor(ev){
@@ -674,6 +708,7 @@ function readEditor(ev){
   if(byEl('ed-day-0'))ev.days=DAYS.map((_,i)=>byEl('ed-day-'+i).checked?i:-1).filter(i=>i>=0);
   const s=ev.start,d=ev.dur;
   s.mu=tim('ed-mu',s.mu);s.sigma=Math.max(0,num('ed-sigma',s.sigma));s.lo=tim('ed-lo',s.lo);s.hi=tim('ed-hi',s.hi);
+  s.skew=Math.max(-1,Math.min(1,num('ed-skew',s.skew)));s.gapSkew=Math.max(-1,Math.min(1,num('ed-gskew',s.gapSkew)));
   if(byEl('ed-after'))s.after=byEl('ed-after').value;s.gap=Math.max(0,num('ed-gap',s.gap));s.gapSigma=Math.max(0,num('ed-gaps',s.gapSigma));
   d.median=Math.max(1,num('ed-med',d.median));d.spread=Math.max(0,num('ed-spread',d.spread));d.sd=Math.max(0,num('ed-sd',d.sd));
   ev.exists=Math.min(1,Math.max(0.05,num('ed-exists',ev.exists)));
@@ -703,18 +738,20 @@ $('#evlist').addEventListener('click',e=>{
     openId=null;afterStructural()}
 });
 $('#evlist').addEventListener('input',e=>{const ev=byId(openId);if(!ev||!e.target.closest('#editor'))return;
-  if(['ed-stype','ed-dtype','ed-fr','ed-rep','ed-link','ed-learn','ed-priv'].includes(e.target.id))return;
+  if(e.target.name==='ed-stype'||['ed-dtype','ed-fr','ed-rep','ed-link','ed-learn','ed-priv'].includes(e.target.id))return;
+  if(e.target.id==='ed-skew')$('#ed-skew-v').textContent=skewWord(+e.target.value);
+  if(e.target.id==='ed-gskew')$('#ed-gskew-v').textContent=skewWord(+e.target.value);
   if(e.target.id==='ed-spread')$('#ed-spread-v').textContent=(+e.target.value).toFixed(2);
-  if(e.target.id==='ed-exists')$('#ed-exists-v').textContent=pct(+e.target.value);
-  stopFlipIfAny();readEditor(ev);editedRefresh()});
-$('#evlist').addEventListener('change',e=>{const ev=byId(openId);if(!ev)return;const id=e.target.id;
+  if(e.target.id==='ed-exists')$('#ed-exists-v').textContent=+e.target.value>=1?'100%':pct(+e.target.value);
+  stopFlipIfAny();readEditor(ev);drawPreview(ev);editedRefresh()});
+$('#evlist').addEventListener('change',e=>{const ev=byId(openId);if(!ev)return;const id=e.target.name==='ed-stype'?'ed-stype':e.target.id;
   if(['ed-stype','ed-dtype','ed-fr','ed-rep','ed-learn','ed-priv','ed-date'].includes(id)){
     readEditor(ev);
-    if(id==='ed-stype'){ev.start.type=e.target.value;if(ev.start.type==='after'&&!events.some(x=>x.id===ev.start.after&&x!==ev&&!dependsOn(x,ev))){const p=events.find(x=>x.id!==ev.id&&!dependsOn(x,ev));ev.start.after=p?p.id:null}}
+    if(id==='ed-stype'){const was=ev.start.type;ev.start.type=e.target.value;if(was==='uniform'&&ev.start.type!=='uniform'){ev.start.mu=Math.round((ev.start.lo+ev.start.hi)/2);ev.start.sigma=Math.max(3,Math.round((ev.start.hi-ev.start.lo)/4))}if(ev.start.type==='uniform'&&was!=='uniform'&&was!=='after'){ev.start.lo=ev.start.mu-Math.max(10,2*ev.start.sigma);ev.start.hi=ev.start.mu+Math.max(10,2*ev.start.sigma)}if(ev.start.type==='after'&&!events.some(x=>x.id===ev.start.after&&x!==ev&&!dependsOn(x,ev))){const p=events.find(x=>x.id!==ev.id&&!dependsOn(x,ev));ev.start.after=p?p.id:null}}
     else if(id==='ed-dtype')ev.dur.type=e.target.value;
     else if(id==='ed-fr')ev.friend=e.target.checked?{mu:plannedStart(ev)+10,sigma:15,median:ev.dur.median,spread:0.25}:null;
     else if(id==='ed-rep'){if(e.target.value==='once'){ev.date=ev.date||logDate}else{ev.date=null;if(!ev.days.length)ev.days=[dowOf(logDate)]}}
-    afterStructural();const el=byEl(id);if(el)el.focus()}});
+    afterStructural();const el=id==='ed-stype'?byEl('ed-st-'+ev.start.type):byEl(id);if(el)el.focus()}});
 $('#add').addEventListener('click',()=>{
   const used=new Set(events.map(e=>e.color));const color=[0,1,2,3,4,5,6,7].find(c=>!used.has(c))??events.length%8;
   const ev=mk('e'+Date.now().toString(36),'New event',color,[dowOf(logDate)],{mu:900,sigma:10},{median:60,spread:0.3});
@@ -761,12 +798,13 @@ function populateSelects(){
 function plState(){const ev=byId($('#pl-ev').value),key=$('#pl-day').value,ci=cols.indexOf(key);if(!ev||ci<0||!sims[ci].st[ev.id])return null;return{ev,ci,key,st:sims[ci].st[ev.id]}}
 function defaultTarget(kind,ev,ci,st){
   if(!st.n)return plannedStart(ev);
-  if(kind==='arrive')return ev.start.type==='normal'||ev.start.type==='fixed'?ev.start.mu:Math.round(st.s50/5)*5;
+  if(kind==='arrive')return ['normal','fixed','skewed'].includes(ev.start.type)?ev.start.mu:Math.round(st.s50/5)*5;
   const day=sims[ci],next=day.order.filter(x=>x!==ev&&day.st[x.id].n&&day.st[x.id].s50>st.s50).sort((a,b)=>day.st[a.id].s50-day.st[b.id].s50)[0];
   return next?Math.round(day.st[next.id].s50/5)*5:Math.round((st.e50+15)/5)*5}
 function resetPlannerTarget(){const S=plState();if(!S)return;$('#pl-t').value=fmt(defaultTarget($('#pl-kind').value,S.ev,S.ci,S.st));$('#pl-shift').value=0}
 function shiftLabel(ev,dl){const s=ev.start;
   if(s.type==='after'){const p=byId(s.after);return `leave a ${Math.max(0,Math.round(s.gap+dl))} min gap after ${esc(p?p.name:'it')}`}
+  if(s.type==='skewed')return `aim for ${fmt(s.mu+dl)} (typical arrival)`;
   if(s.type==='uniform')return `aim for ${fmt(s.lo+dl)}–${fmt(s.hi+dl)}`;return `plan to start at ${fmt(s.mu+dl)}`}
 function renderPlanner(){
   const S=plState(),out=$('#pl-answer');if(!S){$('#pl-p').textContent='–';$('#pl-desc').textContent='Pick an event that happens this week.';out.textContent='';drawPlanner(null);return}

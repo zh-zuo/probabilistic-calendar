@@ -26,7 +26,8 @@ The [live app](https://zh-zuo.github.io/probabilistic-calendar/) opens on a demo
 - **Real dates**: week navigation, weekly events, one-off events on a date, and "skip this date".
 - **Daily log**: tap *Arrived now* and *Done now* (or type the times). The rest of the day re-forecasts from what you logged, and logged events show as solid blocks: the future is a cloud, the past is what happened.
 - **Learning**: each event fits its arrival time and duration from your logs, starting from your plan and moving toward your real timing as logs accumulate ("you planned 18:30 ± 15; you arrive 18:44 ± 15").
-- **Distributions**: arrivals on a bell curve, a uniform window, or exact; durations right-skewed (meetings run long), symmetric, or fixed. Each event is a cloud of dots whose density is the chance you're there (2,500 simulated weeks).
+- **Arrival shapes**: for each event, pick Gaussian (as likely early as late), Skewed (usually near the typical time, with a long tail toward early or late, set by a slider), Uniform (any time in a window), Exact, or After another event (with a skewable gap). The editor previews the shape as you change it.
+- **Distributions**: arrivals as above; durations right-skewed (meetings run long), symmetric, or fixed. Each event is a cloud of dots whose density is the chance you're there (2,500 simulated weeks).
 - **Chained events**: "Dinner starts 20 ± 10 min after Climbing ends", so lateness propagates. The day-ends strip shows the chance each day is done by your bedtime.
 - **Timing planner**: slide your plan earlier or later and see the chance you arrive or finish by a deadline; or ask "to be 90% sure, when do I start?"
 - **Bets**: bet on your own week. Bets settle themselves when you log the event, and the page keeps a Brier score for you and for the model.
