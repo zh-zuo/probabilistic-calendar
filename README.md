@@ -54,7 +54,7 @@ The app loads `calendar.json` on every visit. Edits you make in the browser stay
 | Your browser | Logs, bets, events marked **Private**, conditions | Only you, on that browser |
 | Invite links | One event's name and timing | Anyone you send the link to (links do not expire) |
 
-GitHub Pages sites are public on free accounts even when the repo is private, so mark anything personal as **Private** in the event editor; private events never go into `calendar.json`. Use **Back up everything** to save your logs and private events to a file, and **Restore a backup** to move them to another browser.
+A GitHub Pages site is public even when its repo is private (access-controlled Pages needs GitHub Enterprise), so mark anything personal as **Private** in the event editor; private events never go into `calendar.json`. Use **Back up everything** to save your logs and private events to a file, and **Restore a backup** to move them to another browser.
 
 ## Use it locally
 
