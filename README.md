@@ -2,7 +2,7 @@
 
 A week calendar where every event is a probability distribution instead of a fixed block.
 
-**Live:** https://zh-zuo.github.io/stochastic-calendar/
+**Live:** https://zh-zuo.github.io/probabilistic-calendar/
 
 - **Arrival times** follow a bell curve (18:30 ± 15 min), a uniform window (sometime 20:00–21:00), or are exact.
 - **Durations** can be right-skewed (log-normal: meetings run long), symmetric, or fixed.
