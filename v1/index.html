@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Probabilistic Calendar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a week grid of probability clouds (canvas) beside a narrow control rail; rail stacks under the grid on phones. */
+:root{
+  --bg:#EEF0F4; --surface:#FBFBFD; --ink:#1A2030; --muted:#5F6880; --line:#D6DAE4; --grid:#E3E6EE;
+  --accent:#2F47C9; --accent-ink:#FFFFFF; --now:#D2342C; --warn:#B4530F;
+  --c0:#12867A; --c1:#C9601C; --c2:#B8304F; --c3:#3552C2; --c4:#6F8418; --c5:#8146B8; --c6:#A57A00; --c7:#2D7FA8;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10131B; --surface:#171B26; --ink:#E5E8F1; --muted:#9098AE; --line:#2A3042; --grid:#222838;
+  --accent:#8C9DFF; --accent-ink:#10131B; --now:#FF6B5E; --warn:#F0A060;
+  --c0:#3CCBB8; --c1:#F2924F; --c2:#F0708E; --c3:#7F98FF; --c4:#B3CC4A; --c5:#BC8CF2; --c6:#E7BE3A; --c7:#5CC0EE;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10131B; --surface:#171B26; --ink:#E5E8F1; --muted:#9098AE; --line:#2A3042; --grid:#222838;
+  --accent:#8C9DFF; --accent-ink:#10131B; --now:#FF6B5E; --warn:#F0A060;
+  --c0:#3CCBB8; --c1:#F2924F; --c2:#F0708E; --c3:#7F98FF; --c4:#B3CC4A; --c5:#BC8CF2; --c6:#E7BE3A; --c7:#5CC0EE;
+  color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.app{max-width:1340px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.brand{display:grid;gap:4px;min-width:0}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(28px,4vw,40px);letter-spacing:-.02em;line-height:1;margin:0;text-wrap:balance}
+h1 .tilde{color:var(--accent)}
+.lede{margin:0;color:var(--muted);max-width:62ch}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+button{font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:8px;font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--now)}
+.universe{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+@media (max-width:940px){.main{grid-template-columns:minmax(0,1fr)}}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.key-dots{width:28px;height:10px;border-radius:2px;background:radial-gradient(circle,var(--muted) 0.8px,transparent 1.2px) 0 0/4px 4px}
+.key-pill{width:18px;height:10px;border-radius:3px;background:var(--muted)}
+.key-now{width:18px;height:2px;background:var(--now)}
+.cal-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.cal{position:relative;min-width:720px}
+.cal canvas{display:block;touch-action:pan-y}
+.hair{position:absolute;height:1px;background:var(--ink);opacity:.55;pointer-events:none}
+.tip{position:absolute;z-index:5;min-width:190px;max-width:250px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;box-shadow:0 6px 24px rgba(0,0,0,.14);pointer-events:none;font-size:13px;display:grid;gap:5px}
+.tip h4{margin:0;font-family:var(--f-mono);font-weight:500;font-size:12px;color:var(--muted);letter-spacing:.04em}
+.tip .row{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center}
+.tip .free{color:var(--muted);border-top:1px solid var(--grid);padding-top:5px;display:flex;justify-content:space-between}
+.sw{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+aside{display:grid;gap:14px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:10px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.risk{display:grid;gap:4px}
+.risk-top{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.risk-names{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.meter{height:5px;border-radius:3px;background:var(--grid);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--warn);border-radius:3px}
+.risk small{color:var(--muted);font-size:12px}
+.ev-list{display:grid;gap:6px}
+.ev-row{display:grid;grid-template-columns:10px minmax(0,1fr);gap:4px 10px;align-items:center;text-align:left;width:100%;background:transparent;border:1px solid transparent;border-radius:8px;padding:8px;color:var(--ink)}
+.ev-row:hover{background:var(--bg)}
+.ev-row[aria-expanded="true"]{border-color:var(--line);background:var(--bg)}
+.ev-name{font-weight:600;overflow-wrap:anywhere}
+.ev-sum{grid-column:2;font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+.editor{border:1px solid var(--line);border-top:none;margin-top:-8px;border-radius:0 0 8px 8px;padding:12px;display:grid;gap:12px;background:var(--bg)}
+.field{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.field input,.field select{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;width:100%;box-sizing:border-box}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.days{display:flex;flex-wrap:wrap;gap:4px}
+.days label{display:inline-flex}
+.days input{position:absolute;opacity:0;width:1px;height:1px}
+.days span{font-size:12px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;color:var(--muted);cursor:pointer;background:var(--surface)}
+.days input:checked+span{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.days input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
+.colors{display:flex;gap:6px;flex-wrap:wrap}
+.colors button{width:22px;height:22px;border-radius:6px;border:2px solid transparent;padding:0}
+.colors button[aria-pressed="true"]{border-color:var(--ink)}
+.range-row{display:flex;gap:8px;align-items:center}
+.range-row input{flex:1;padding:0;border:none;background:transparent;accent-color:var(--accent)}
+.ed-stats{font-size:12.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:grid;gap:3px}
+.ed-actions{display:flex;justify-content:space-between;gap:8px}
+.real-item{font-size:13px;display:flex;gap:8px;align-items:baseline}
+.real-item .num{color:var(--muted);font-size:12px;flex:none;width:30px}
+.empty{color:var(--muted);font-size:13px;margin:0}
+.foot{font-size:12px;color:var(--muted);margin:0}
+.linkbtn{background:none;border:none;color:var(--muted);text-decoration:underline;padding:0;font-size:12px}
+@media (prefers-reduced-motion:no-preference){.cal canvas{transition:opacity .25s}}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>Probabilistic Calendar<span class="tilde">~</span></h1>
+      <p class="lede">Every event is a distribution. You arrive on a bell curve, meetings run long on a skewed tail, and dinner happens sometime after eight. Hover any minute to ask where you probably are.</p>
+    </div>
+    <div class="controls">
+      <span class="universe" id="universe" hidden></span>
+      <button class="btn" id="resample" hidden>Another universe</button>
+      <button class="btn primary" id="observe">Observe the week</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <section>
+      <div class="cal-scroll"><div class="cal" id="cal">
+        <canvas id="cv" aria-label="Week view showing each event as a probability cloud"></canvas>
+        <div class="hair" id="hair" hidden></div>
+        <div class="tip" id="tip" hidden></div>
+      </div></div>
+      <div class="legend">
+        <span><i class="key-dots"></i>dot density = chance you're in that event at that minute</span>
+        <span><i class="key-pill"></i>label sits at the median start</span>
+        <span><i class="key-now"></i>now</span>
+      </div>
+    </section>
+
+    <aside>
+      <div class="panel" id="riskPanel">
+        <div class="panel-head"><h2 id="riskTitle">Collision risk</h2></div>
+        <p class="hint" id="riskHint">Chance two events overlap on a day they share, from 3,000 simulated weeks.</p>
+        <div id="risks" class="risk-list" style="display:grid;gap:10px"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Events</h2><button class="btn small" id="add">Add event</button></div>
+        <div class="ev-list" id="evlist"></div>
+        <p class="foot">Starts with a sample week. Edits stay in this browser. <button class="linkbtn" id="reset">Reset to sample</button></p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const T0=7*60,T1=24*60,BIN=5,NB=(T1-T0)/BIN,N=3000;
+const GUT=48,HEAD=34,PPM=0.8;
+const KEY='stochastic-calendar-v1';
+
+/* ---------- randomness ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hashStr(s){let h=2166136261;for(const ch of s){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function gauss(r){let u=0;while(u===0)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r())}
+function sStart(ev,r){const s=ev.start;if(s.type==='fixed')return s.mu;if(s.type==='uniform'){const hi=Math.max(s.hi,s.lo);return s.lo+(hi-s.lo)*r()}return s.mu+s.sigma*gauss(r)}
+function sDur(ev,r){const d=ev.dur;if(d.type==='fixed')return d.median;if(d.type==='normal')return Math.max(1,d.median+d.sd*gauss(r));return d.median*Math.exp(d.spread*gauss(r))}
+function plannedStart(ev){return ev.start.type==='uniform'?ev.start.lo:ev.start.mu}
+
+/* ---------- formatting ---------- */
+const pad=n=>String(n).padStart(2,'0');
+function fmt(m){m=Math.round(m);const h=Math.floor(m/60);return `${pad(((h%24)+24)%24)}:${pad(((m%60)+60)%60)}`}
+function fmtDur(m){m=Math.round(m);const h=Math.floor(m/60),mm=m%60;return h?(mm?`${h}h ${mm}m`:`${h}h`):`${mm}m`}
+function tmin(v){if(!v)return null;const [h,m]=v.split(':').map(Number);return h*60+m}
+function pct(p){return p<0.01?'<1%':p>0.99?'>99%':Math.round(p*100)+'%'}
+function daysText(d){const s=[...d].sort((a,b)=>a-b).join();if(s==='0,1,2,3,4,5,6')return 'Daily';if(s==='0,1,2,3,4')return 'Weekdays';if(s==='5,6')return 'Weekends';if(!d.length)return 'No days';return [...d].sort((a,b)=>a-b).map(i=>DAYS[i]).join(' ')}
+function startText(ev){const s=ev.start;if(s.type==='uniform')return `${fmt(s.lo)}–${fmt(s.hi)}`;if(s.type==='fixed')return `${fmt(s.mu)} sharp`;return `${fmt(s.mu)} ± ${s.sigma}m`}
+function durText(ev){const d=ev.dur;if(d.type==='lognormal')return `~${fmtDur(d.median)}, runs long`;if(d.type==='normal')return `${fmtDur(d.median)} ± ${d.sd}m`;return fmtDur(d.median)}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- data ---------- */
+const mk=(id,name,color,days,start,dur)=>({id,name,color,days,start:Object.assign({type:'normal',mu:600,sigma:10,lo:600,hi:660},start),dur:Object.assign({type:'lognormal',median:60,spread:0.25,sd:10},dur)});
+const SAMPLE=()=>[
+  mk('wake','Wake up + coffee',6,[0,1,2,3,4,5,6],{mu:570,sigma:20},{median:35,spread:0.3}),
+  mk('deep','Deep work',3,[0,2,3],{mu:630,sigma:20},{median:120,spread:0.35}),
+  mk('standup','Standup',1,[1,4],{mu:690,sigma:3},{median:45,spread:0.2}),
+  mk('lunch','Lunch',7,[0,1,2,3,4,5,6],{type:'uniform',lo:750,hi:810},{median:40,spread:0.25}),
+  mk('oneone','1:1 meeting',2,[3],{mu:780,sigma:4},{median:60,spread:0.35}),
+  mk('team','Team meeting',4,[4],{mu:840,sigma:3},{median:75,spread:0.25}),
+  mk('climb','Climbing gym',0,[0,2,4,5],{mu:1110,sigma:15},{type:'normal',median:100,sd:20}),
+  mk('dinner','Dinner',5,[0,1,2,3,4,5,6],{type:'uniform',lo:1200,hi:1260},{median:45,spread:0.3}),
+];
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(v)&&v.length)return v}catch(e){}return SAMPLE()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(events))}catch(e){}}
+
+let events=load();
+let sims={},layout=[],conflicts=[];
+let observed=false,real={},universe=0,openId=null;
+
+/* ---------- simulation ---------- */
+function simulate(ev){
+  const r=mulberry32(hashStr(ev.id)^0x9e3779b9);
+  const S=new Float64Array(N),E=new Float64Array(N),D=new Float64Array(N),diff=new Float64Array(NB+1);
+  for(let i=0;i<N;i++){
+    const s=sStart(ev,r),d=sDur(ev,r);S[i]=s;D[i]=d;E[i]=s+d;
+    let b0=Math.ceil((s-T0)/BIN-0.5),b1=Math.ceil((s+d-T0)/BIN-0.5);
+    b0=Math.max(0,Math.min(NB,b0));b1=Math.max(0,Math.min(NB,b1));
+    if(b1>b0){diff[b0]++;diff[b1]--}
+  }
+  const occ=new Float64Array(NB);let acc=0;for(let b=0;b<NB;b++){acc+=diff[b];occ[b]=acc/N}
+  const sS=Float64Array.from(S).sort(),sE=Float64Array.from(E).sort();
+  const q=(a,p)=>a[Math.min(N-1,Math.floor(p*N))];
+  let over=0,late=0;const ps=plannedStart(ev);
+  for(let i=0;i<N;i++){if(D[i]>ev.dur.median+15)over++;if(S[i]>ps+5)late++}
+  return{S,E,occ,st:{s05:q(sS,.05),s50:q(sS,.5),s95:q(sS,.95),e50:q(sE,.5),e90:q(sE,.9),lo:q(sS,.003),hi:q(sE,.997),pOver:over/N,pLate:late/N}};
+}
+function computeLayout(){
+  layout=DAYS.map((_,d)=>{
+    const evs=events.filter(e=>e.days.includes(d)).map(e=>({ev:e,lo:sims[e.id].st.lo,hi:sims[e.id].st.hi,lane:0,lanes:1}));
+    evs.sort((a,b)=>a.lo-b.lo);
+    let cluster=[],cEnd=-1e9,laneEnds=[];
+    const flush=()=>{for(const p of cluster)p.lanes=laneEnds.length};
+    for(const p of evs){
+      if(p.lo>=cEnd&&cluster.length){flush();cluster=[];laneEnds=[]}
+      let li=laneEnds.findIndex(end=>end<=p.lo);
+      if(li<0){li=laneEnds.length;laneEnds.push(p.hi)}else laneEnds[li]=p.hi;
+      p.lane=li;cluster.push(p);cEnd=Math.max(cEnd,p.hi);
+    }
+    flush();return evs;
+  });
+}
+function computeConflicts(){
+  conflicts=[];
+  for(let i=0;i<events.length;i++)for(let j=i+1;j<events.length;j++){
+    const a=events[i],b=events[j],shared=a.days.filter(d=>b.days.includes(d));
+    if(!shared.length)continue;
+    const A=sims[a.id],B=sims[b.id];let c=0;
+    for(let k=0;k<N;k++)if(A.S[k]<B.E[k]&&B.S[k]<A.E[k])c++;
+    const p=c/N;if(p>=0.005){const first=A.st.s50<=B.st.s50;conflicts.push({a:first?a:b,b:first?b:a,p,shared})}
+  }
+  conflicts.sort((x,y)=>y.p-x.p);
+}
+function recomputeAll(){sims={};for(const e of events)sims[e.id]=simulate(e);computeLayout();computeConflicts()}
+function sampleReal(ev,r){for(const k of Object.keys(real))if(k.startsWith(ev.id+'|'))delete real[k];for(const d of ev.days){const s=sStart(ev,r);real[ev.id+'|'+d]=[s,s+sDur(ev,r)]}}
+function observe(){real={};const r=mulberry32((Math.random()*4294967296)>>>0);for(const e of events)sampleReal(e,r);universe++}
+
+/* ---------- drawing ---------- */
+const cv=$('#cv'),cal=$('#cal'),ctx=cv.getContext('2d');
+let geo={cw:0,W:0,H:0};
+function tok(){const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim();
+  return{surface:g('--surface'),ink:g('--ink'),muted:g('--muted'),grid:g('--grid'),line:g('--line'),accent:g('--accent'),now:g('--now'),c:[0,1,2,3,4,5,6,7].map(i=>g('--c'+i))}}
+function rgba(hex,a){const h=hex.replace('#','');const n=parseInt(h.length===3?h.split('').map(x=>x+x).join(''):h,16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`}
+const yOf=t=>HEAD+(t-T0)*PPM;
+function roundRect(x,y,w,h,r){ctx.beginPath();r=Math.min(r,h/2,w/2);ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function draw(){
+  const dpr=window.devicePixelRatio||1,W=cal.clientWidth,H=HEAD+(T1-T0)*PPM+8;
+  geo={W,H,cw:(W-GUT)/7};
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const k=tok(),cw=geo.cw,now=new Date(),today=(now.getDay()+6)%7,nowMin=now.getHours()*60+now.getMinutes();
+  ctx.fillStyle=k.surface;ctx.fillRect(0,0,W,H);
+  ctx.textBaseline='middle';
+  // day headers
+  for(let d=0;d<7;d++){const x=GUT+d*cw;ctx.font=`${d===today?600:500} 12px "IBM Plex Sans", system-ui, sans-serif`;ctx.fillStyle=d===today?k.accent:k.muted;ctx.textAlign='center';ctx.fillText(DAYS[d].toUpperCase(),x+cw/2,HEAD/2)}
+  // hour grid
+  ctx.textAlign='right';ctx.font='11px "IBM Plex Mono", ui-monospace, monospace';
+  for(let h=7;h<=24;h++){const y=Math.round(yOf(h*60))+.5;ctx.strokeStyle=k.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(GUT,y);ctx.lineTo(W,y);ctx.stroke();ctx.fillStyle=k.muted;ctx.fillText(`${pad(h%24)}:00`,GUT-7,y)}
+  for(let d=0;d<=7;d++){const x=Math.round(GUT+d*cw)+.5;ctx.strokeStyle=d===0?k.line:k.grid;ctx.beginPath();ctx.moveTo(x,HEAD-6);ctx.lineTo(x,H);ctx.stroke()}
+  // events
+  for(let d=0;d<7;d++)for(const p of layout[d]){
+    const ev=p.ev,sim=sims[ev.id];if(!sim)continue;
+    const lw=(cw-6)/p.lanes,x=GUT+d*cw+3+p.lane*lw,w=Math.max(4,lw-3),col=k.c[ev.color%8];
+    const fade=observed?0.28:1,rr=mulberry32(hashStr(ev.id+d));
+    const bh=BIN*PPM;
+    for(let b=0;b<NB;b++){const pr=sim.occ[b];if(pr<0.004)continue;const y=HEAD+b*bh;
+      ctx.fillStyle=rgba(col,pr*0.22*fade);ctx.fillRect(x,y,w,bh);
+      const n=Math.round(pr*w*bh*0.3);ctx.fillStyle=rgba(col,0.85*fade);
+      for(let i=0;i<n;i++)ctx.fillRect(x+rr()*(w-1.2),y+rr()*(bh-0.6),1.3,1.3)}
+    if(!observed){
+      const y=yOf(sim.st.s50);ctx.save();ctx.beginPath();ctx.rect(x,y-1,w,20);ctx.clip();
+      ctx.font='600 11px "IBM Plex Sans", system-ui, sans-serif';const tw=ctx.measureText(ev.name).width;
+      roundRect(x,y,Math.min(w,tw+10),16,3);ctx.fillStyle=col;ctx.fill();
+      ctx.fillStyle=k.surface;ctx.textAlign='left';ctx.fillText(ev.name,x+5,y+8.5);ctx.restore();
+    }else{
+      const rv=real[ev.id+'|'+d];if(!rv)continue;const y0=yOf(rv[0]),y1=yOf(rv[1]);
+      roundRect(x,y0,w,Math.max(6,y1-y0),4);ctx.fillStyle=rgba(col,0.9);ctx.fill();
+      ctx.save();ctx.beginPath();ctx.rect(x,y0,w,Math.max(6,y1-y0));ctx.clip();ctx.fillStyle=k.surface;ctx.textAlign='left';
+      ctx.font='600 11px "IBM Plex Sans", system-ui, sans-serif';ctx.fillText(ev.name,x+5,y0+9);
+      if(y1-y0>28){ctx.font='10.5px "IBM Plex Mono", ui-monospace, monospace';ctx.fillText(`${fmt(rv[0])}–${fmt(rv[1])}`,x+5,y0+22)}
+      ctx.restore();
+    }
+  }
+  // now line
+  if(nowMin>=T0&&nowMin<=T1){const y=yOf(nowMin),x=GUT+today*cw;ctx.strokeStyle=k.now;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+cw,y);ctx.stroke();ctx.fillStyle=k.now;ctx.beginPath();ctx.arc(x+2,y,4,0,7);ctx.fill()}
+}
+
+/* ---------- hover query ---------- */
+const tip=$('#tip'),hair=$('#hair');
+function query(e){
+  const rect=cv.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
+  if(x<GUT||y<HEAD||y>yOf(T1)){tip.hidden=hair.hidden=true;return}
+  const d=Math.min(6,Math.floor((x-GUT)/geo.cw)),t=T0+(y-HEAD)/PPM,b=Math.min(NB-1,Math.floor((t-T0)/BIN));
+  let rows=[],free=1;
+  for(const p of layout[d]){
+    if(observed){const rv=real[p.ev.id+'|'+d];if(rv&&rv[0]<=t&&t<rv[1])rows.push({ev:p.ev,txt:`${fmt(rv[0])}–${fmt(rv[1])}`})}
+    else{const pr=sims[p.ev.id].occ[b];free*=1-pr;if(pr>=0.005)rows.push({ev:p.ev,pr,txt:pct(pr)})}
+  }
+  if(!observed)rows.sort((a,b)=>b.pr-a.pr);
+  const k=tok();
+  tip.innerHTML=`<h4>${DAYS[d].toUpperCase()} ${fmt(t)}</h4>`+(rows.length?rows.map(r=>`<div class="row"><i class="sw" style="background:${k.c[r.ev.color%8]}"></i><span>${esc(r.ev.name)}</span><span class="num">${r.txt}</span></div>`).join(''):'')+
+    (observed?(rows.length?'':`<div class="free"><span>Free in this universe</span></div>`):`<div class="free"><span>Free</span><span class="num">${pct(free)}</span></div>`);
+  tip.hidden=false;hair.hidden=false;
+  hair.style.left=(GUT+d*geo.cw)+'px';hair.style.width=geo.cw+'px';hair.style.top=y+'px';
+  const tw=tip.offsetWidth,th=tip.offsetHeight;let tx=x+14,ty=y+14;
+  if(tx+tw>geo.W-4)tx=x-tw-14;if(ty+th>geo.H-4)ty=y-th-14;tip.style.left=Math.max(4,tx)+'px';tip.style.top=Math.max(4,ty)+'px';
+}
+cv.addEventListener('pointermove',query);cv.addEventListener('pointerdown',query);
+cv.addEventListener('pointerleave',()=>{tip.hidden=hair.hidden=true});
+
+/* ---------- side panels ---------- */
+function renderRisks(){
+  const box=$('#risks'),k=tok();
+  if(observed){
+    $('#riskTitle').textContent=`What happened in universe #${universe}`;
+    $('#riskHint').textContent='One sampled week. Collisions that actually occurred:';
+    const items=[];
+    for(let d=0;d<7;d++){const L=layout[d];for(let i=0;i<L.length;i++)for(let j=i+1;j<L.length;j++){
+      let A=L[i].ev,B=L[j].ev,ra=real[A.id+'|'+d],rb=real[B.id+'|'+d];if(!ra||!rb)continue;
+      if(ra[0]>rb[0]){[A,B]=[B,A];[ra,rb]=[rb,ra]}
+      const ov=Math.min(ra[1],rb[1])-rb[0];if(ov>0.5)items.push({d,A,B,ov,at:rb[0]})}}
+    items.sort((a,b)=>a.d-b.d||a.at-b.at);
+    const late=events.filter(e=>e.start.type==='normal').map(e=>e.days.map(d=>({e,d,l:real[e.id+'|'+d][0]-e.start.mu}))).flat().sort((a,b)=>b.l-a.l)[0];
+    box.innerHTML=(items.length?items.map(it=>`<div class="real-item"><span class="num">${DAYS[it.d]}</span><span><b>${esc(it.A.name)}</b> ran into <b>${esc(it.B.name)}</b> by <span class="num">${fmtDur(it.ov)}</span></span></div>`).join(''):`<p class="empty">A clean week. Nothing collided. Enjoy it, it is rare.</p>`)
+      +(late&&late.l>1?`<div class="real-item"><span class="num">${DAYS[late.d]}</span><span>Latest arrival: <b>${esc(late.e.name)}</b>, <span class="num">${fmtDur(late.l)}</span> after plan</span></div>`:'');
+    return;
+  }
+  $('#riskTitle').textContent='Collision risk';
+  $('#riskHint').textContent='Chance two events overlap on a day they share, from 3,000 simulated weeks.';
+  if(!conflicts.length){box.innerHTML='<p class="empty">No pair overlaps in more than 0.5% of simulated weeks.</p>';return}
+  box.innerHTML=conflicts.slice(0,8).map(c=>`<div class="risk"><div class="risk-top"><span class="risk-names"><i class="sw" style="background:${k.c[c.a.color%8]}"></i>${esc(c.a.name)} <span style="color:var(--muted)">→</span> <i class="sw" style="background:${k.c[c.b.color%8]}"></i>${esc(c.b.name)}</span><span class="num">${pct(c.p)}</span></div><div class="meter"><i style="width:${Math.max(2,c.p*100)}%"></i></div><small>${c.shared.length===7?'every day':c.shared.map(d=>DAYS[d]).join(', ')}</small></div>`).join('');
+}
+function rowInner(ev,k){return `<i class="sw" style="background:${k.c[ev.color%8]}"></i><span class="ev-name">${esc(ev.name)}</span><span class="ev-sum">${daysText(ev.days)} · ${startText(ev)} · ${durText(ev)}</span>`}
+function statsHTML(ev){const s=sims[ev.id].st;
+  return `<span>Start: 90% of weeks between <b class="num">${fmt(s.s05)}</b> and <b class="num">${fmt(s.s95)}</b></span><span>Done by <b class="num">${fmt(s.e90)}</b> in 9 weeks out of 10 (median <span class="num">${fmt(s.e50)}</span>)</span><span>Runs 15+ min over: <b class="num">${pct(s.pOver)}</b>${ev.start.type==='normal'?` · 5+ min late: <b class="num">${pct(s.pLate)}</b>`:''}</span>`}
+function editorHTML(ev){
+  const s=ev.start,d=ev.dur,k=tok(),opt=(v,l,cur)=>`<option value="${v}"${v===cur?' selected':''}>${l}</option>`;
+  return `<div class="editor" id="editor">
+  <label class="field">Name<input id="ed-name" value="${esc(ev.name)}" autocomplete="off"></label>
+  <div class="field">Days<div class="days">${DAYS.map((n,i)=>`<label><input type="checkbox" id="ed-day-${i}"${ev.days.includes(i)?' checked':''}><span>${n}</span></label>`).join('')}</div></div>
+  <label class="field">When you show up<select id="ed-stype">${opt('normal','Bell curve around a time',s.type)}${opt('uniform','Any time in a window',s.type)}${opt('fixed','Exactly on time',s.type)}</select></label>
+  ${s.type==='normal'?`<div class="pair"><label class="field">Centered at<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label><label class="field">Spread (σ, min)<input type="number" id="ed-sigma" min="0" max="180" value="${s.sigma}"></label></div>`
+   :s.type==='uniform'?`<div class="pair"><label class="field">Earliest<input type="time" id="ed-lo" value="${fmt(s.lo)}"></label><label class="field">Latest<input type="time" id="ed-hi" value="${fmt(s.hi)}"></label></div>`
+   :`<label class="field">At<input type="time" id="ed-mu" value="${fmt(s.mu)}"></label>`}
+  <label class="field">How long it takes<select id="ed-dtype">${opt('lognormal','Usually runs long (skewed)',d.type)}${opt('normal','Could go either way',d.type)}${opt('fixed','Exactly as planned',d.type)}</select></label>
+  ${d.type==='lognormal'?`<div class="pair"><label class="field">Typical (min)<input type="number" id="ed-med" min="5" max="600" value="${d.median}"></label><label class="field">Overrun tail<span class="range-row"><input type="range" id="ed-spread" min="0" max="0.8" step="0.05" value="${d.spread}"><span class="num" id="ed-spread-v">${d.spread.toFixed(2)}</span></span></label></div>`
+   :d.type==='normal'?`<div class="pair"><label class="field">Typical (min)<input type="number" id="ed-med" min="5" max="600" value="${d.median}"></label><label class="field">± (σ, min)<input type="number" id="ed-sd" min="0" max="240" value="${d.sd}"></label></div>`
+   :`<label class="field">Minutes<input type="number" id="ed-med" min="5" max="600" value="${d.median}"></label>`}
+  <div class="field">Color<div class="colors">${k.c.map((c,i)=>`<button type="button" data-color="${i}" aria-label="Color ${i+1}" aria-pressed="${i===ev.color}" style="background:${c}"></button>`).join('')}</div></div>
+  <div class="ed-stats" id="ed-stats">${statsHTML(ev)}</div>
+  <div class="ed-actions"><button class="btn small danger" id="ed-del" type="button">Delete</button><button class="btn small" id="ed-done" type="button">Done</button></div></div>`;
+}
+function renderList(){
+  const k=tok();
+  $('#evlist').innerHTML=events.map(ev=>`<button class="ev-row" data-id="${ev.id}" aria-expanded="${ev.id===openId}">${rowInner(ev,k)}</button>${ev.id===openId?editorHTML(ev):''}`).join('');
+}
+const num=(id,fb)=>{const el=document.getElementById(id);if(!el)return fb;const v=parseFloat(el.value);return isFinite(v)?v:fb};
+const tim=(id,fb)=>{const el=document.getElementById(id);if(!el)return fb;const v=tmin(el.value);return v==null?fb:v};
+function readEditor(ev){
+  ev.name=$('#ed-name').value.trim()||'Untitled';
+  ev.days=DAYS.map((_,i)=>document.getElementById('ed-day-'+i).checked?i:-1).filter(i=>i>=0);
+  const s=ev.start,d=ev.dur;
+  s.mu=tim('ed-mu',s.mu);s.sigma=Math.max(0,num('ed-sigma',s.sigma));s.lo=tim('ed-lo',s.lo);s.hi=tim('ed-hi',s.hi);
+  d.median=Math.max(1,num('ed-med',d.median));d.spread=Math.max(0,num('ed-spread',d.spread));d.sd=Math.max(0,num('ed-sd',d.sd));
+}
+function refresh(ev){
+  sims[ev.id]=simulate(ev);computeLayout();computeConflicts();
+  if(observed)sampleReal(ev,mulberry32((Math.random()*4294967296)>>>0));
+  draw();renderRisks();save();
+  const row=document.querySelector(`.ev-row[data-id="${ev.id}"]`);if(row)row.innerHTML=rowInner(ev,tok());
+  const st=$('#ed-stats');if(st)st.innerHTML=statsHTML(ev);
+}
+const byId=id=>events.find(e=>e.id===id);
+$('#evlist').addEventListener('click',e=>{
+  const row=e.target.closest('.ev-row');if(row){openId=openId===row.dataset.id?null:row.dataset.id;renderList();return}
+  const ev=byId(openId);if(!ev)return;
+  const cb=e.target.closest('[data-color]');if(cb){ev.color=+cb.dataset.color;renderList();refresh(ev);return}
+  if(e.target.id==='ed-done'){openId=null;renderList();return}
+  if(e.target.id==='ed-del'){events=events.filter(x=>x!==ev);delete sims[ev.id];openId=null;computeLayout();computeConflicts();draw();renderRisks();renderList();save()}
+});
+$('#evlist').addEventListener('input',e=>{const ev=byId(openId);if(!ev||!e.target.closest('#editor'))return;
+  if(e.target.id==='ed-stype'||e.target.id==='ed-dtype')return;
+  if(e.target.id==='ed-spread')$('#ed-spread-v').textContent=(+e.target.value).toFixed(2);
+  readEditor(ev);refresh(ev)});
+$('#evlist').addEventListener('change',e=>{const ev=byId(openId);if(!ev)return;
+  if(e.target.id==='ed-stype'||e.target.id==='ed-dtype'){readEditor(ev);if(e.target.id==='ed-stype')ev.start.type=e.target.value;else ev.dur.type=e.target.value;renderList();refresh(ev);document.getElementById(e.target.id).focus()}});
+$('#add').addEventListener('click',()=>{
+  const used=new Set(events.map(e=>e.color));const color=[0,1,2,3,4,5,6,7].find(c=>!used.has(c))??events.length%8;
+  const ev=mk('e'+Date.now().toString(36),'New event',color,[(new Date().getDay()+6)%7],{mu:900,sigma:10},{median:60,spread:0.3});
+  events.push(ev);openId=ev.id;sims[ev.id]=simulate(ev);if(observed)sampleReal(ev,mulberry32(Date.now()>>>0));
+  computeLayout();computeConflicts();draw();renderRisks();renderList();save();
+  const n=$('#ed-name');if(n){n.focus();n.select()}
+});
+$('#reset').addEventListener('click',()=>{events=SAMPLE();openId=null;recomputeAll();if(observed)observe();draw();renderRisks();renderList();save()});
+
+/* ---------- observe ---------- */
+function setObserved(v){observed=v;if(v)observe();
+  $('#observe').textContent=v?'Back to probabilities':'Observe the week';
+  $('#resample').hidden=!v;$('#universe').hidden=!v;$('#universe').textContent=`universe #${universe}`;
+  draw();renderRisks()}
+$('#observe').addEventListener('click',()=>setObserved(!observed));
+$('#resample').addEventListener('click',()=>setObserved(true));
+
+/* ---------- boot ---------- */
+recomputeAll();draw();renderRisks();renderList();
+let rz;new ResizeObserver(()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(draw)}).observe(cal);
+if(document.fonts)document.fonts.ready.then(draw);
+const rethemed=()=>{draw();renderRisks();renderList()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rethemed);
+new MutationObserver(rethemed).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+setInterval(draw,60000);
+</script>
+
+</body>
+</html>
