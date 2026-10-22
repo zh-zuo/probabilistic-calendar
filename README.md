@@ -23,6 +23,7 @@ A week calendar where every event is a probability distribution instead of a fix
 
 The [live app](https://zh-zuo.github.io/probabilistic-calendar/) opens on a demo week. Earlier versions are kept at [/v1/](https://zh-zuo.github.io/probabilistic-calendar/v1/) and [/v2/](https://zh-zuo.github.io/probabilistic-calendar/v2/).
 
+- **Click to edit**: click any event on the calendar to edit it in a side panel (a bottom sheet on phones) while the calendar updates live; double-click an empty spot to add an event there. Schrödinger blocks open on a single click and edit on a double-click.
 - **Real dates**: week navigation, weekly events, one-off events on a date, and "skip this date".
 - **Daily log**: tap *Arrived now* and *Done now* (or type the times). The rest of the day re-forecasts from what you logged, and logged events show as solid blocks: the future is a cloud, the past is what happened.
 - **Learning**: each event fits its arrival time and duration from your logs, starting from your plan and moving toward your real timing as logs accumulate ("you planned 18:30 ± 15; you arrive 18:44 ± 15").

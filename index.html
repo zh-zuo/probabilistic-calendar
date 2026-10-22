@@ -154,7 +154,12 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
 .bet .res-y{color:var(--good)} .bet .res-n{color:var(--warn)}
 .score{font-size:13px;background:var(--bg);border-radius:6px;padding:8px 10px;display:grid;gap:3px}
 .src{font-size:13px;background:var(--bg);border-radius:6px;padding:8px 10px;display:grid;gap:6px}
-@media (prefers-reduced-motion:no-preference){.chip,.btn{transition:background .15s,border-color .15s}}
+.sheet{position:fixed;top:0;right:0;bottom:0;width:min(410px,100vw);z-index:20;background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 40px rgba(0,0,0,.16);display:grid;grid-template-rows:auto minmax(0,1fr);padding-top:env(safe-area-inset-top,0px);padding-right:env(safe-area-inset-right,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.sheet-body{overflow:auto;overscroll-behavior:contain}
+.sheet .editor{border:none;margin:0;border-radius:0;background:transparent;padding:14px 16px 20px}
+@media (max-width:700px){.sheet{top:auto;left:0;width:auto;height:74vh;border-left:none;border-top:1px solid var(--line);border-radius:14px 14px 0 0;padding-left:env(safe-area-inset-left,0px);box-shadow:0 -12px 40px rgba(0,0,0,.18)}}
+@media (prefers-reduced-motion:no-preference){.chip,.btn{transition:background .15s,border-color .15s}.sheet:not([hidden]){animation:sheetin .18s ease-out}@keyframes sheetin{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}}
 </style>
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
 </head>
@@ -198,6 +203,7 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
         <span><i class="key-hatch"></i>Schrödinger block (click to open)</span>
         <span><i class="key-friend"></i>friend's presence</span>
         <span><i class="key-now"></i>now</span>
+        <span>Click an event to edit it · double-click an empty spot to add one</span>
         <span><label for="bed">Done for the day by</label><input type="time" id="bed" value="22:00"></span>
       </div>
     </section>
@@ -261,6 +267,11 @@ h2{font-family:var(--f-display);font-weight:500;font-size:17px;margin:0}
       </div>
     </aside>
   </div>
+</div>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-labelledby="sheet-title">
+  <div class="sheet-head"><h2 id="sheet-title">Edit event</h2><button class="btn small iconbtn" id="sheet-close" aria-label="Close the editor" style="width:32px;height:32px">×</button></div>
+  <div class="sheet-body" id="sheet-body"></div>
 </div>
 
 <script id="embedded-calendar" type="application/json"></script>
@@ -528,6 +539,7 @@ function draw(){
       solidBlock(x,w,r.s,r.e,col,k,ev.name,`${fmt(r.s)}–${fmt(r.e)}`,false);
     }
   }
+  if(openId){ctx.save();ctx.setLineDash([5,3]);ctx.strokeStyle=k.ink;ctx.lineWidth=1.5;for(const h of geo.hits)if(h.ev.id===openId){const y0=Math.max(HEAD,h.y0),y1=Math.min(H-2,h.y1);roundRect(h.x-2,y0,h.w+4,y1-y0,6);ctx.stroke()}ctx.restore()}
   const ti=cols.indexOf(tk);
   if(ti>=0&&nowMin>=T0&&nowMin<=T1){const y=yOf(nowMin),x=GUT+ti*cw;ctx.strokeStyle=k.now;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+cw,y);ctx.stroke();ctx.fillStyle=k.now;ctx.beginPath();ctx.arc(x+2,y,4,0,7);ctx.fill()}
 }
@@ -548,6 +560,9 @@ function query(e){
       const hit=geo.hits.find(h=>h.ev===ev&&h.ci===ci&&x>=h.x&&x<=h.x+h.w&&y>=h.y0&&y<=h.y1);
       if(hit&&ev.exists<1)boxLine=boxState[ev.id+'|'+key]===undefined?`${esc(ev.name)} is free and busy at once. Click to open the box.`:'Box opened. Click again to close it.'}}
   if(!observed)rows.sort((a,b)=>b.pr-a.pr);
+  const under=hitAt(L);cv.style.cursor=under?'pointer':'default';
+  if(under&&isBox(under)&&boxState[under.ev.id+'|'+key]===undefined)boxLine=`${esc(under.ev.name)} is free and busy at once. Click to open the box; double-click to edit.`;
+  else if(!boxLine||!(under&&isBox(under)))boxLine=under?`Click to edit ${esc(under.ev.name)}.`:'Double-click to add an event here.';
   tip.innerHTML=`<h4>${shortDay(key).toUpperCase()} · ${fmt(t)}</h4>`+rows.map(r=>`<div class="row"><i class="sw" style="background:${r.friend?k.ink:k.c[r.ev.color%8]};${r.friend?'width:4px':''}"></i><span>${r.friend?'Friend at '+esc(r.ev.name):esc(r.ev.name)}</span><span class="num">${r.txt}</span></div>`).join('')+
     (observed?(rows.length?'':`<div class="free"><span>Free in this universe</span></div>`):`<div class="free"><span>Free</span><span class="num">${pct(free)}</span></div>`)+(boxLine?`<div class="box">${boxLine}</div>`:'');
   tip.hidden=hair.hidden=false;
@@ -557,13 +572,21 @@ function query(e){
 }
 cv.addEventListener('pointermove',query);cv.addEventListener('pointerdown',query);
 cv.addEventListener('pointerleave',()=>{tip.hidden=hair.hidden=true});
+const hitAt=L=>geo.hits.find(h=>h.ci===L.ci&&L.x>=h.x&&L.x<=h.x+h.w&&L.y>=h.y0&&L.y<=h.y1);
+const isBox=h=>h.ev.exists<1&&!observed&&!logs[h.ev.id+'|'+cols[h.ci]];
 cv.addEventListener('click',e=>{
   const L=locate(e);if(!L)return;
   if(L.header){logDate=cols[L.ci];draw();renderLog();return}
-  if(observed)return;
-  const hit=geo.hits.find(h=>h.ci===L.ci&&h.ev.exists<1&&L.x>=h.x&&L.x<=h.x+h.w&&L.y>=h.y0&&L.y<=h.y1);if(!hit)return;
-  const key=hit.ev.id+'|'+cols[hit.ci];if(boxState[key]===undefined)boxState[key]=Math.random()<hit.ev.exists;else delete boxState[key];
-  refreshAll();query(e);
+  const hit=hitAt(L);if(!hit)return;
+  if(isBox(hit)){const key=hit.ev.id+'|'+cols[hit.ci];if(boxState[key]===undefined)boxState[key]=Math.random()<hit.ev.exists;else delete boxState[key];refreshAll();query(e);return}
+  openEditor(hit.ev.id);
+});
+cv.addEventListener('dblclick',e=>{
+  const L=locate(e);if(!L||L.header)return;const hit=hitAt(L);
+  if(hit){openEditor(hit.ev.id);return}
+  const used=new Set(events.map(x=>x.color)),color=[0,1,2,3,4,5,6,7].find(c=>!used.has(c))??events.length%8;
+  const ev=mk('e'+Date.now().toString(36),'New event',color,[dowOf(cols[L.ci])],{mu:Math.round(L.t/15)*15,sigma:10},{median:60,spread:0.3},{date:cols[L.ci]});
+  events.push(ev);openId=ev.id;afterStructural();const n=$('#ed-name');if(n){n.focus();n.select()}
 });
 
 /* ---------- week navigation ---------- */
@@ -699,7 +722,12 @@ function drawPreview(ev){
   g.textAlign='left';g.fillText(lab(q(.05)),4,H-2);g.textAlign='center';g.fillText(lab(med),Math.min(W-30,Math.max(30,mxp)),H-2);g.textAlign='right';g.fillText(lab(q(.95)),W-4,H-2);
   if(cap)cap.textContent=isAfter?`Gap after ${(byId(st.after)||{}).name||'the other event'}: 90% between ${lab(q(.05))} and ${lab(q(.95))}, median ${lab(med)}.`:`Arrival: 90% between ${fmt(q(.05))} and ${fmt(q(.95))}, median ${fmt(med)} (dashed). Plan only; logs and conditions not applied.`}
 function renderList(){const k=tok();
-  $('#evlist').innerHTML=events.length?events.map(ev=>`<button class="ev-row" data-id="${ev.id}" aria-expanded="${ev.id===openId}">${rowInner(ev,k)}</button>${ev.id===openId?editorHTML(ev):''}`).join(''):'<p class="empty">No events yet. Add one, or import an .ics file from your calendar app.</p>';const oe=byId(openId);if(oe)drawPreview(oe)}
+  $('#evlist').innerHTML=events.length?events.map(ev=>`<button class="ev-row" data-id="${ev.id}" aria-expanded="${ev.id===openId}">${rowInner(ev,k)}</button>`).join(''):'<p class="empty">No events yet. Add one, or import an .ics file from your calendar app.</p>';renderEditor()}
+function renderEditor(){const ev=byId(openId),sh=$('#sheet');if(!ev){sh.hidden=true;return}
+  const body=$('#sheet-body'),top=body.scrollTop;body.innerHTML=editorHTML(ev);sh.hidden=false;body.scrollTop=top;drawPreview(ev)}
+function openEditor(id){const fresh=openId!==id;openId=id;renderList();draw();if(fresh)$('#sheet-body').scrollTop=0}
+function closeEditor(){openId=null;renderList();draw()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openId){closeEditor()}});
 const num=(id,fb)=>{const el=byEl(id);if(!el)return fb;const v=parseFloat(el.value);return isFinite(v)?v:fb};
 const tim=(id,fb)=>{const el=byEl(id);if(!el)return fb;const v=tmin(el.value);return v==null?fb:v};
 function readEditor(ev){
@@ -725,26 +753,27 @@ function refreshAll(){
 const editedRefresh=()=>{cancelAnimationFrame(pending);pending=requestAnimationFrame(()=>{saveEvents();refreshAll()})};
 function stopFlipIfAny(){if(flip){clearInterval(flip.timer);flip=null;$('#flip').textContent='Play 100 universes'}flipSummary=null}
 function afterStructural(){stopFlipIfAny();saveEvents();renderList();refreshAll();populateSelects()}
-$('#evlist').addEventListener('click',e=>{
-  const row=e.target.closest('.ev-row');if(row){openId=openId===row.dataset.id?null:row.dataset.id;renderList();return}
+$('#evlist').addEventListener('click',e=>{const row=e.target.closest('.ev-row');if(!row)return;if(openId===row.dataset.id)closeEditor();else openEditor(row.dataset.id)});
+$('#sheet').addEventListener('click',e=>{
+  if(e.target.closest('#sheet-close')){closeEditor();return}
   const ev=byId(openId);if(!ev)return;
   const cb=e.target.closest('[data-color]');if(cb){ev.color=+cb.dataset.color;afterStructural();return}
   const us=e.target.closest('[data-unskip]');if(us){ev.skip=ev.skip.filter(x=>x!==us.dataset.unskip);afterStructural();return}
-  if(e.target.id==='ed-done'){openId=null;renderList();return}
+  if(e.target.id==='ed-done'){closeEditor();return}
   if(e.target.id==='ed-invite'){copyInvite(ev);return}
   if(e.target.id==='ed-del'){
     for(const x of events)if(x.start.type==='after'&&x.start.after===ev.id){x.start.type='normal'}
     events=events.filter(x=>x!==ev);for(const kk of Object.keys(boxState))if(kk.startsWith(ev.id+'|'))delete boxState[kk];
     openId=null;afterStructural()}
 });
-$('#evlist').addEventListener('input',e=>{const ev=byId(openId);if(!ev||!e.target.closest('#editor'))return;
+$('#sheet').addEventListener('input',e=>{const ev=byId(openId);if(!ev||!e.target.closest('#editor'))return;
   if(e.target.name==='ed-stype'||['ed-dtype','ed-fr','ed-rep','ed-link','ed-learn','ed-priv'].includes(e.target.id))return;
   if(e.target.id==='ed-skew')$('#ed-skew-v').textContent=skewWord(+e.target.value);
   if(e.target.id==='ed-gskew')$('#ed-gskew-v').textContent=skewWord(+e.target.value);
   if(e.target.id==='ed-spread')$('#ed-spread-v').textContent=(+e.target.value).toFixed(2);
   if(e.target.id==='ed-exists')$('#ed-exists-v').textContent=+e.target.value>=1?'100%':pct(+e.target.value);
   stopFlipIfAny();readEditor(ev);drawPreview(ev);editedRefresh()});
-$('#evlist').addEventListener('change',e=>{const ev=byId(openId);if(!ev)return;const id=e.target.name==='ed-stype'?'ed-stype':e.target.id;
+$('#sheet').addEventListener('change',e=>{const ev=byId(openId);if(!ev)return;const id=e.target.name==='ed-stype'?'ed-stype':e.target.id;
   if(['ed-stype','ed-dtype','ed-fr','ed-rep','ed-learn','ed-priv','ed-date'].includes(id)){
     readEditor(ev);
     if(id==='ed-stype'){const was=ev.start.type;ev.start.type=e.target.value;if(was==='uniform'&&ev.start.type!=='uniform'){ev.start.mu=Math.round((ev.start.lo+ev.start.hi)/2);ev.start.sigma=Math.max(3,Math.round((ev.start.hi-ev.start.lo)/4))}if(ev.start.type==='uniform'&&was!=='uniform'&&was!=='after'){ev.start.lo=ev.start.mu-Math.max(10,2*ev.start.sigma);ev.start.hi=ev.start.mu+Math.max(10,2*ev.start.sigma)}if(ev.start.type==='after'&&!events.some(x=>x.id===ev.start.after&&x!==ev&&!dependsOn(x,ev))){const p=events.find(x=>x.id!==ev.id&&!dependsOn(x,ev));ev.start.after=p?p.id:null}}
